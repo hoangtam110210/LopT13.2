@@ -1,6 +1,13 @@
 /* ==========================================================================
-   MODULE SẢNH MINIGAMES LỚP T13.2 HUB (LOẠI TRỪ CHÍNH BẠN KHỎI DANH SÁCH MỜI)
+   MODULE SẢNH MINIGAMES LỚP T13.2 HUB (BẮT BUỘC TẠO VÁN - ĐỦ NGƯỜI MỚI CHƠI)
    ========================================================================== */
+
+function initMiniGamesData() {
+    if (!localStorage.getItem('T132_GAME_ROOMS')) {
+        localStorage.setItem('T132_GAME_ROOMS', JSON.stringify([])); 
+    }
+}
+initMiniGamesData();
 
 /* --------------------------------------------------------------------------
    0. QUẢN LÝ TRẠNG THÁI ONLINE & ĐIỀU PHỐI SẢNH
@@ -25,7 +32,7 @@ function toggleStudentOnlineStatus(studentName) {
         target.isOnline = !target.isOnline;
         localStorage.setItem('T132_USERS', JSON.stringify(users));
         renderOnlinePresenceBar();
-        if (wwState.inGame) renderWerewolfInGameUI();
+        if (wwState && wwState.inGame) renderWerewolfInGameUI();
     }
 }
 
@@ -63,23 +70,235 @@ function openMiniGameSection(gameType) {
     if (panelChess) panelChess.style.display = (gameType === 'chess') ? 'block' : 'none';
     if (panelWerewolf) panelWerewolf.style.display = (gameType === 'werewolf') ? 'block' : 'none';
 
-    renderOnlinePresenceBar();
+    renderGameRoomsList(gameType);
+}
 
-    if (gameType === 'xo') initCaroGame();
-    if (gameType === 'chess') initChessGame();
-    if (gameType === 'werewolf') initWerewolfLobbyUI();
+function getGameFullName(gameKey) {
+    if (gameKey === 'xo') return 'Cờ Caro XO (40x40)';
+    if (gameKey === 'chess') return 'Cờ Vua Quốc Tế';
+    if (gameKey === 'werewolf') return 'Ma Sói Realtime';
+    return 'Trò chơi';
+}
+
+function getMaxPlayers(gameKey) {
+    if (gameKey === 'xo') return 2;
+    if (gameKey === 'chess') return 2;
+    if (gameKey === 'werewolf') return 6; // Ma sói yêu cầu tối thiểu 6 người
+    return 2;
+}
+
+/* --------------------------------------------------------------------------
+   QUẢN LÝ PHÒNG CHƠI (TẠO VÁN - ĐỦ NGƯỜI MỚI CHƠI)
+   -------------------------------------------------------------------------- */
+function renderGameRoomsList(gameKey) {
+    let panelId = `game-panel-${gameKey}`;
+    let panelEl = document.getElementById(panelId);
+    if (!panelEl) return;
+
+    let gameFullName = getGameFullName(gameKey);
+    let maxP = getMaxPlayers(gameKey);
+
+    let rooms = [];
+    try {
+        rooms = JSON.parse(localStorage.getItem('T132_GAME_ROOMS')) || [];
+    } catch(e) {}
+
+    let gameRooms = rooms.filter(r => r.gameKey === gameKey);
+    let currentUser = {};
+    try { currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {}; } catch(e) {}
+
+    let roomsHtml = "";
+    if (gameRooms.length === 0) {
+        roomsHtml = `<p style="color:#777; font-size:11px; padding:8px; text-align:center;">Chưa có ván nào được tạo. Hãy bấm "Tạo Ván Mới" bên dưới!</p>`;
+    } else {
+        roomsHtml = gameRooms.map(room => {
+            let isHost = room.hostName === currentUser.name;
+            let isJoined = room.players.includes(currentUser.name);
+            let isFull = room.players.length >= room.maxPlayers;
+
+            let playersBadge = `<span class="badge" style="background:${isFull ? '#2b8a3e' : '#f59e0b'}; color:#fff; font-size:10px;">${room.players.length}/${room.maxPlayers} người</span>`;
+            let playerNamesList = room.players.map(p => `• ${p}`).join('<br>');
+
+            let actionBtn = "";
+            if (isJoined) {
+                if (isHost) {
+                    actionBtn = `
+                        <button onclick="startCreatedGameRoom(${room.id})" class="btn btn-primary" style="font-size:10px; padding:4px 10px; margin-top:6px;" ${!isFull ? 'disabled style="background:#ccc; cursor:not-allowed;"' : ''}>
+                            ${isFull ? '🚀 Bắt Đầu Ván Chơi' : '⏳ Đang chờ đủ người...'}
+                        </button>
+                    `;
+                } else {
+                    actionBtn = `<span style="color:#2b8a3e; font-size:10px; font-weight:bold; display:block; margin-top:6px;">✅ Đã vào phòng (Đang chờ chủ phòng bắt đầu)</span>`;
+                }
+            } else {
+                if (!isFull) {
+                    actionBtn = `<button onclick="joinGameRoom(${room.id})" class="btn btn-warning" style="font-size:10px; padding:4px 10px; margin-top:6px;">🚪 Vào Phòng</button>`;
+                } else {
+                    actionBtn = `<span style="color:#d90429; font-size:10px; font-weight:bold; display:block; margin-top:6px;">🔒 Phòng đã đầy</span>`;
+                }
+            }
+
+            return `
+                <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:10px; margin-bottom:8px; text-align:left; font-size:11px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <b>🏠 Ván của: ${room.hostName}</b>
+                        ${playersBadge}
+                    </div>
+                    <div style="margin-top:6px; color:#333; font-size:10px; background:#fff; padding:6px; border-radius:4px; border:1px solid #e2e8f0;">
+                        <b>Thành viên trong phòng:</b><br>${playerNamesList}
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                        <div>${actionBtn}</div>
+                        ${isHost ? `<button onclick="deleteGameRoom(${room.id})" class="btn btn-danger" style="font-size:9px; padding:2px 6px;">🗑️ Xoá ván</button>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    panelEl.innerHTML = `
+        <div id="online-presence-container"></div>
+        <h4 style="color:var(--text-color); margin-bottom:6px;">🎮 Sảnh ${gameFullName}</h4>
+        <p style="font-size:10px; color:#666; margin-bottom:8px;">Muốn chơi buộc phải <b>Tạo Ván Mới</b>, đủ người trong phòng chủ phòng mới có thể bấm bắt đầu!</p>
+        
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+            <button onclick="createNewGameRoom('${gameKey}')" class="btn btn-primary" style="flex:2; font-size:11px;">➕ Tạo Ván Mới (${maxP} Người)</button>
+            <button onclick="openInvitePlayerModal('${gameFullName}')" class="btn btn-warning" style="flex:1; font-size:11px;">✉️ Mời Bạn Online</button>
+        </div>
+
+        <div style="border-top:1px solid #e2e8f0; padding-top:8px; max-height:260px; overflow-y:auto;">
+            <b style="font-size:11px; color:#333; display:block; margin-bottom:6px;">📋 Danh Sách Phòng Đang Chờ:</b>
+            ${roomsHtml}
+        </div>
+    `;
+
+    renderOnlinePresenceBar();
+}
+
+function createNewGameRoom(gameKey) {
+    let currentUser = {};
+    try { currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {}; } catch(e) {}
+    if (!currentUser.name) {
+        alert("⚠️ Vui lòng đăng nhập trước khi tạo ván!");
+        return;
+    }
+
+    let gameFullName = getGameFullName(gameKey);
+    let maxP = getMaxPlayers(gameKey);
+
+    let rooms = [];
+    try {
+        rooms = JSON.parse(localStorage.getItem('T132_GAME_ROOMS')) || [];
+    } catch(e) {}
+
+    let existingRoom = rooms.find(r => r.hostName === currentUser.name && r.gameKey === gameKey);
+    if (existingRoom) {
+        alert("⚠️ Bạn đã tạo một ván chơi đang chờ rồi!");
+        return;
+    }
+
+    rooms.push({
+        id: Date.now(),
+        gameName: gameFullName,
+        gameKey: gameKey,
+        hostName: currentUser.name,
+        maxPlayers: maxP,
+        players: [currentUser.name],
+        status: 'WAITING'
+    });
+
+    localStorage.setItem('T132_GAME_ROOMS', JSON.stringify(rooms));
+    alert(`✨ Đã tạo ván ${gameFullName}! Hãy chờ đủ người tham gia...`);
+    renderGameRoomsList(gameKey);
+}
+
+function joinGameRoom(roomId) {
+    let currentUser = {};
+    try { currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {}; } catch(e) {}
+    if (!currentUser.name) {
+        alert("⚠️ Vui lòng đăng nhập!");
+        return;
+    }
+
+    let rooms = [];
+    try {
+        rooms = JSON.parse(localStorage.getItem('T132_GAME_ROOMS')) || [];
+    } catch(e) {}
+
+    let room = rooms.find(r => r.id === roomId);
+    if (!room) {
+        alert("⚠️ Phòng không tồn tại!");
+        return;
+    }
+
+    if (room.players.length >= room.maxPlayers) {
+        alert("⚠️ Phòng đã đủ người!");
+        return;
+    }
+
+    if (room.players.includes(currentUser.name)) {
+        alert("Bạn đã ở trong phòng này.");
+        return;
+    }
+
+    room.players.push(currentUser.name);
+    localStorage.setItem('T132_GAME_ROOMS', JSON.stringify(rooms));
+    alert(`🚪 Đã vào phòng của ${room.hostName}!`);
+    renderGameRoomsList(room.gameKey);
+}
+
+function startCreatedGameRoom(roomId) {
+    let rooms = [];
+    try {
+        rooms = JSON.parse(localStorage.getItem('T132_GAME_ROOMS')) || [];
+    } catch(e) {}
+
+    let room = rooms.find(r => r.id === roomId);
+    if (!room) return;
+
+    if (room.players.length < room.maxPlayers) {
+        alert(`⏳ Chưa đủ người (${room.players.length}/${room.maxPlayers}). Phải chờ đủ người mới được chơi!`);
+        return;
+    }
+
+    alert(`🚀 Đủ người! Bắt đầu ván chơi ${room.gameName}!`);
+
+    if (room.gameKey === 'xo') {
+        initCaroGame(room);
+    } else if (room.gameKey === 'chess') {
+        initChessGame(room);
+    } else if (room.gameKey === 'werewolf') {
+        startWerewolfRealGame(room);
+    }
+}
+
+function deleteGameRoom(roomId) {
+    if (!confirm("Bạn có chắc chắn muốn giải tán ván chơi này?")) return;
+    let rooms = [];
+    try {
+        rooms = JSON.parse(localStorage.getItem('T132_GAME_ROOMS')) || [];
+    } catch(e) {}
+
+    let room = rooms.find(r => r.id === roomId);
+    let gameKey = room ? room.gameKey : 'xo';
+
+    rooms = rooms.filter(r => r.id !== roomId);
+    localStorage.setItem('T132_GAME_ROOMS', JSON.stringify(rooms));
+    renderGameRoomsList(gameKey);
 }
 
 
 /* ==========================================================================
-   1. GAME 1: CỜ CARO (XO) 40x40 - 5 Ô LIÊN TIẾP THẮNG
+   1. GAME 1: CỜ CARO (XO) 40x40 - BÀN CHƠI THỰC TẾ
    ========================================================================== */
 const CARO_SIZE = 40;
 let caroBoard = [];
 let caroTurn = 'X';
 let caroGameOver = false;
+let currentActiveCaroRoom = null;
 
-function initCaroGame() {
+function initCaroGame(room) {
+    currentActiveCaroRoom = room || { players: ['Người 1', 'Người 2'] };
     caroBoard = Array(CARO_SIZE).fill(null).map(() => Array(CARO_SIZE).fill(''));
     caroTurn = 'X';
     caroGameOver = false;
@@ -89,6 +308,9 @@ function initCaroGame() {
 function renderCaroBoardUI() {
     let container = document.getElementById('game-panel-xo');
     if (!container) return;
+
+    let p1 = currentActiveCaroRoom ? currentActiveCaroRoom.players[0] : 'Bên X';
+    let p2 = currentActiveCaroRoom ? currentActiveCaroRoom.players[1] : 'Bên O';
 
     let gridHtml = '';
     for (let r = 0; r < CARO_SIZE; r++) {
@@ -109,19 +331,15 @@ function renderCaroBoardUI() {
 
     container.innerHTML = `
         <div id="online-presence-container"></div>
-        <h4 style="color:var(--text-color); margin-bottom:6px;">❌⭕ Cờ Caro (${CARO_SIZE}x${CARO_SIZE}) - 5 Ô Liên Tiếp Thắng</h4>
+        <h4 style="color:var(--text-color); margin-bottom:6px;">❌⭕ Cờ Caro 40x40 - Ván Đấu: ${p1} (X) vs ${p2} (O)</h4>
         
         <div style="display:flex; justify-content:space-between; align-items:center; background:#e7f5ff; padding:8px 12px; border-radius:10px; margin-bottom:8px; font-size:12px;">
-            <span>Lượt đi: <b style="color:${caroTurn === 'X' ? '#d90429' : '#0284c7'}; font-size:14px;">Quân ${caroTurn}</b></span>
-            <button onclick="initCaroGame()" class="btn btn-primary" style="font-size:10px; padding:3px 8px;">🔄 Chơi Ván Mới</button>
+            <span>Lượt đi: <b style="color:${caroTurn === 'X' ? '#d90429' : '#0284c7'}; font-size:14px;">${caroTurn === 'X' ? p1 + ' (X)' : p2 + ' (O)'}</b></span>
+            <button onclick="openMiniGameSection('xo')" class="btn btn-danger" style="font-size:10px; padding:3px 8px;">🚪 Rời Bàn Chơi</button>
         </div>
 
         <div style="max-width:100%; max-height:360px; overflow:auto; border:2px solid var(--primary-color); border-radius:10px; background:#e9ecef;">
             <div style="display:inline-block; padding:4px;">${gridHtml}</div>
-        </div>
-
-        <div style="display:flex; gap:6px; margin-top:10px;">
-            <button onclick="openInvitePlayerModal('Cờ Caro')" class="btn btn-primary" style="flex:1; font-size:11px;">✉️ Mời Bạn Học Đang Online</button>
         </div>
     `;
     renderOnlinePresenceBar();
@@ -135,7 +353,8 @@ function makeCaroMove(r, c) {
     if (checkCaroWin5(r, c, caroTurn)) {
         caroGameOver = true;
         renderCaroBoardUI();
-        setTimeout(() => alert(`🎉 CHÚC MỪNG! Người chơi [ ${caroTurn} ] đạt 5 ô liên tiếp và ĐÃ THẮNG!`), 100);
+        let winnerName = (caroTurn === 'X') ? (currentActiveCaroRoom?.players[0] || 'Quân X') : (currentActiveCaroRoom?.players[1] || 'Quân O');
+        setTimeout(() => alert(`🎉 CHÚC MỪNG! [ ${winnerName} ] đạt 5 ô liên tiếp và ĐÃ THẮNG VÁN!`), 100);
         return;
     }
 
@@ -160,7 +379,7 @@ function checkCaroWin5(row, col, symbol) {
 
 
 /* ==========================================================================
-   2. GAME 2: CỜ VUA QUỐC TẾ (8x8)
+   2. GAME 2: CỜ VUA QUỐC TẾ (8x8 STANDARD) - BÀN CHƠI THỰC TẾ
    ========================================================================== */
 const CHESS_PIECES = {
     'r': '♜', 'n': '♞', 'b': '♝', 'q': '♛', 'k': '♚', 'p': '♟',
@@ -174,8 +393,10 @@ let validMoves = [];
 let chessMoveHistory = [];
 let capturedByWhite = [];
 let capturedByBlack = [];
+let currentActiveChessRoom = null;
 
-function initChessGame() {
+function initChessGame(room) {
+    currentActiveChessRoom = room || { players: ['Trắng', 'Đen'] };
     chessBoard = [
         ['r','n','b','q','k','b','n','r'],
         ['p','p','p','p','p','p','p','p'],
@@ -198,6 +419,9 @@ function initChessGame() {
 function renderChessUI() {
     let container = document.getElementById('game-panel-chess');
     if (!container) return;
+
+    let pWhite = currentActiveChessRoom ? currentActiveChessRoom.players[0] : 'Trắng';
+    let pBlack = currentActiveChessRoom ? currentActiveChessRoom.players[1] : 'Đen';
 
     let boardHtml = '';
     for (let r = 0; r < 8; r++) {
@@ -226,21 +450,21 @@ function renderChessUI() {
         boardHtml += '</div>';
     }
 
-    let historyStr = chessMoveHistory.length > 0 ? chessMoveHistory.join(', ') : 'Chưa có nước đi nào.';
+    let historyStr = chessMoveHistory.length > 0 ? chessMoveHistory.join(', ') : 'Chưa có nước đi.';
     let whiteCapStr = capturedByWhite.length > 0 ? capturedByWhite.join(' ') : 'Chưa ăn quân nào';
     let blackCapStr = capturedByBlack.length > 0 ? capturedByBlack.join(' ') : 'Chưa ăn quân nào';
 
     container.innerHTML = `
         <div id="online-presence-container"></div>
-        <h4 style="color:var(--text-color); margin-bottom:6px;">♟ Cờ Vua Quốc Tế (8x8 Standard)</h4>
+        <h4 style="color:var(--text-color); margin-bottom:6px;">♟ Cờ Vua Quốc Tế - Ván Đấu: ${pWhite} (Trắng) vs ${pBlack} (Đen)</h4>
         
         <div style="display:flex; justify-content:space-between; align-items:center; background:#e7f5ff; padding:8px 12px; border-radius:10px; margin-bottom:8px; font-size:12px;">
-            <span>Lượt đi: <b style="color:${chessTurn === 'W' ? '#d97706' : '#1e293b'};">${chessTurn === 'W' ? '♔ Trắng (Đi trước)' : '♚ Đen'}</b></span>
-            <button onclick="initChessGame()" class="btn btn-primary" style="font-size:10px; padding:3px 8px;">🔄 Chơi Ván Mới</button>
+            <span>Lượt đi: <b style="color:${chessTurn === 'W' ? '#d97706' : '#1e293b'};">${chessTurn === 'W' ? '♔ Trắng (' + pWhite + ')' : '♚ Đen (' + pBlack + ')'}</b></span>
+            <button onclick="openMiniGameSection('chess')" class="btn btn-danger" style="font-size:10px; padding:3px 8px;">🚪 Rời Bàn Chơi</button>
         </div>
 
         <div style="background:#f1f3f5; border:1px solid #dee2e6; padding:6px 10px; border-radius:8px; margin-bottom:6px; font-size:11px;">
-            <b style="color:#2b8a3e;">♔ Bên Trắng đã ăn của Đen:</b> 
+            <b style="color:#2b8a3e;">♔ Bên Trắng (${pWhite}) đã ăn của Đen:</b> 
             <span style="font-size:16px; margin-left:6px; color:#000;">${whiteCapStr}</span>
         </div>
 
@@ -251,17 +475,13 @@ function renderChessUI() {
         </div>
 
         <div style="background:#f1f3f5; border:1px solid #dee2e6; padding:6px 10px; border-radius:8px; margin-bottom:8px; font-size:11px;">
-            <b style="color:#d9480f;">♚ Bên Đen đã ăn của Trắng:</b> 
+            <b style="color:#d9480f;">♚ Bên Đen (${pBlack}) đã ăn của Trắng:</b> 
             <span style="font-size:16px; margin-left:6px; color:#fff; text-shadow:0 0 2px #000;">${blackCapStr}</span>
         </div>
 
         <div style="background:#f8f9fa; padding:8px; border-radius:8px; font-size:11px; margin-bottom:8px;">
             <b>📜 Lịch sử nước đi (SAN):</b>
             <div style="max-height:50px; overflow-y:auto; color:#555; margin-top:2px;">${historyStr}</div>
-        </div>
-
-        <div style="display:flex; gap:6px;">
-            <button onclick="openInvitePlayerModal('Cờ Vua')" class="btn btn-primary" style="flex:1; font-size:11px;">✉️ Mời Bạn Học Đang Online</button>
         </div>
     `;
     renderOnlinePresenceBar();
@@ -368,10 +588,8 @@ function executeChessMove(fromR, fromC, toR, toC) {
     chessTurn = (chessTurn === 'W') ? 'B' : 'W';
     renderChessUI();
 }
-
-
 /* ==========================================================================
-   3. GAME 3: MA SÓI REAL-TIME FULL CHAT & TIMER (LỌC BỎ BẢN THÂN KHỎI LIST)
+   3. GAME 3: MA SÓI REAL-TIME FULL CHAT & TIMER
    ========================================================================== */
 
 let wwState = {
@@ -392,62 +610,15 @@ let wwState = {
     witchPoisonTarget: null
 };
 
-function initWerewolfLobbyUI() {
-    let container = document.getElementById('game-panel-werewolf');
-    if (!container) return;
-
-    if (wwState.inGame) {
-        renderWerewolfInGameUI();
-        return;
-    }
-
-    let allUsers = T132_getUsersWithOnlineStatus();
-    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    
-    // LOẠI TRỪ CHÍNH TÀI KHOẢN DÙNG (HOST) KHỎI DANH SÁCH CHECKBOX
-    let otherOnlineUsers = allUsers.filter(u => u.isOnline && u.name !== currentUser.name);
-
-    let onlineOptionsHtml = otherOnlineUsers.map(u => `
-        <label style="display:inline-block; font-size:11px; margin:3px; background:#e6fcf5; padding:4px 8px; border-radius:8px; border:1px solid #63e6be; cursor:pointer;">
-            <input type="checkbox" class="ww-select-online-cb" value="${u.name}" checked> 🟢 ${u.name}
-        </label>
-    `).join('');
-
-    container.innerHTML = `
-        <div id="online-presence-container"></div>
-        <h4 style="color:var(--text-color); margin-bottom:6px;">🐺 Ma Sói Realtime (6 - 20 Người Full Timer & Chat)</h4>
-        
-        <div class="card" style="background:#1e1b4b; color:#fff; border-radius:14px; padding:12px; margin-bottom:10px;">
-            <b style="color:#c084fc; font-size:12px;">👤 Bạn (${currentUser.name || 'Host'}) tự động tham gia ván đấu.</b>
-            <p style="font-size:11px; color:#cbd5e1; margin:6px 0 4px 0;"><b>👥 Tích chọn thêm các bạn học Online khác vào phòng:</b></p>
-
-            <div style="margin-top:4px; max-height:120px; overflow-y:auto; background:rgba(255,255,255,0.1); padding:6px; border-radius:8px;">
-                ${onlineOptionsHtml || '<p style="font-size:10px; color:#ff8787;">Chưa có bạn học nào khác đang Online! Hãy bật Online ở danh sách phía trên.</p>'}
-            </div>
-
-            <button onclick="startWerewolfRealGame()" class="btn btn-warning btn-block" style="margin-top:10px; font-weight:bold; font-size:12px;">🚀 Bắt Đầu Ván Ma Sói</button>
-        </div>
-    `;
-    renderOnlinePresenceBar();
-}
-
-function startWerewolfRealGame() {
-    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || { name: 'Thành viên' };
-    let selectedCbs = document.querySelectorAll('.ww-select-online-cb:checked');
-    let selectedNames = Array.from(selectedCbs).map(cb => cb.value);
-
-    // Tự động thêm bản thân (Host) vào danh sách nếu chưa có
-    if (!selectedNames.includes(currentUser.name)) {
-        selectedNames.unshift(currentUser.name);
-    }
-
-    if (selectedNames.length < 6 || selectedNames.length > 20) {
-        alert(`⚠ Ván đấu Ma Sói yêu cầu tổng cộng từ 6 đến 20 người chơi! (Hiện gồm bạn + ${selectedNames.length - 1} bạn khác = ${selectedNames.length} người)`);
+function startWerewolfRealGame(room) {
+    let playerNames = room ? room.players : [];
+    if (playerNames.length < 6 || playerNames.length > 20) {
+        alert(`⚠ Ván đấu Ma Sói yêu cầu tổng cộng từ 6 đến 20 người chơi! (Hiện tại phòng có ${playerNames.length} người)`);
         return;
     }
 
     let allUsers = JSON.parse(localStorage.getItem('T132_USERS')) || [];
-    let playerList = selectedNames.map(name => {
+    let playerList = playerNames.map(name => {
         let u = allUsers.find(x => x.name === name) || {};
         return {
             name: name,
@@ -549,7 +720,7 @@ function renderWerewolfInGameUI() {
                 <div style="font-size:36px; margin:14px 0;">🙈</div>
                 <h4 style="color:#f6ad55;">LƯỢT THỨC DẬY: [ ${currentRole.toUpperCase()} ]</h4>
                 <p style="font-size:11px; color:#94a3b8;">Đưa điện thoại cho người giữ vai trò này: <b>${namesStr}</b></p>
-                <div style="font-size:16px; font-weight:bold; color:#e2e8f0; margin:10px 0;">⏱️ Thời gian: <span id="ww-timer-display">${wwState.timeRemaining}s</span></div>
+                <div style="font-size:16px; font-weight:bold; color:#e2e8f0; margin:10px 0;">⏱️️ Thời gian: <span id="ww-timer-display">${wwState.timeRemaining}s</span></div>
                 <button onclick="unlockNightTurnSecret()" class="btn btn-warning btn-block" style="margin-top:10px; font-weight:bold; padding:10px;">🔓 Bấm Mở Mắt Đã Đến Lượt Tôi</button>
             </div>
         `;
@@ -571,7 +742,7 @@ function renderWerewolfInGameUI() {
                 <button onclick="electMayor(${idx})" class="btn btn-warning" style="font-size:9px; padding:2px 4px; margin-top:4px;">🎖️ Bầu Cảnh Trưởng</button>
             ` : ''}
             ${(wwState.phase === 'DAY_VOTING' && p.isAlive) ? `
-                <button onclick="voteToLynchPlayer(${idx})" class="btn btn-danger" style="font-size:9px; padding:2px 4px; margin-top:4px;">🗳️️ Bỏ phiếu</button>
+                <button onclick="voteToLynchPlayer(${idx})" class="btn btn-danger" style="font-size:9px; padding:2px 4px; margin-top:4px;">🗳 Bỏ phiếu</button>
             ` : ''}
         </div>
     `).join('');
@@ -816,12 +987,12 @@ function checkWerewolfWinCondition() {
 function stopGameAndReturnLobby() {
     if (wwState.timerInterval) clearInterval(wwState.timerInterval);
     wwState.inGame = false;
-    initWerewolfLobbyUI();
+    openMiniGameSection('werewolf');
 }
 
 
 /* ==========================================================================
-   4. TIỆN ÍCH MỜI ĐẤU DÀNH CHO TÀI KHOẢN ONLINE THỰC (ĐÃ PHÂN TÁCH BẢN THÂN)
+   4. TIỆN ÍCH MỜI ĐẤU (LOẠI TRỪ CHÍNH TÀI KHOẢN ĐANG DÙNG KHỎI LIST)
    ========================================================================== */
 function openInvitePlayerModal(gameName) {
     let modal = document.getElementById('game-invite-modal');
@@ -831,7 +1002,7 @@ function openInvitePlayerModal(gameName) {
     let users = T132_getUsersWithOnlineStatus();
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
     
-    // LỌC BỎ CHÍNH BẢN THÂN KHỎI MODAL MỜI ĐẤU
+    // Loại trừ chính tài khoản hiện tại khỏi modal mời đấu
     let otherOnlineUsers = users.filter(u => u.isOnline && u.name !== currentUser.name);
 
     let html = otherOnlineUsers.map(u => `
