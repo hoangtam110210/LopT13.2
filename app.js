@@ -1,5 +1,5 @@
 /* ========================================================
-   BỘ ĐIỀU PHỐI CHÍNH & CHUYỂN TAB
+   BỘ ĐIỀU PHỐI CHÍNH & CHUYỂN TAB (T132 HUB - REALTIME READY)
    ======================================================== */
 
 let myBarChart = null;
@@ -11,17 +11,13 @@ document.addEventListener("DOMContentLoaded", () => {
     startApp();
 });
 
+/* --------------------------------------------------------------------------
+   1. KHỞI CHẠY ỨNG DỤNG & CẬP NHẬT HEADER
+   -------------------------------------------------------------------------- */
 function startApp() {
-    let user = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+    updateHeaderUserInfo();
 
-    let nameEl = document.getElementById('header-username');
-    let roleEl = document.getElementById('user-role-badge');
-    let avatarEl = document.getElementById('header-avatar');
-
-    if (nameEl) nameEl.innerText = user.nickname ? `${user.name} (${user.nickname})` : user.name;
-    if (roleEl) roleEl.innerText = user.role;
-    if (avatarEl) avatarEl.src = user.avatar || DEFAULT_AVATAR;
-
+    // Khởi tạo các Sub-module (kiểm tra an toàn tồn tại hàm)
     if (typeof renderAdminPanel === 'function') renderAdminPanel();
     if (typeof renderRandomModule === 'function') renderRandomModule();
     if (typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
@@ -36,6 +32,27 @@ function startApp() {
     setTimeout(renderDashboardCharts, 150);
 }
 
+// Cập nhật thông tin User trên thanh Header
+function updateHeaderUserInfo() {
+    let user = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+
+    let nameEl = document.getElementById('header-username');
+    let roleEl = document.getElementById('user-role-badge');
+    let avatarEl = document.getElementById('header-avatar');
+
+    let displayName = user.name || "Thành viên T132";
+    if (user.nickname) {
+        displayName += ` (${user.nickname})`;
+    }
+
+    if (nameEl) nameEl.innerText = displayName;
+    if (roleEl) roleEl.innerText = user.role || "Thành viên";
+    if (avatarEl) avatarEl.src = user.avatar || DEFAULT_AVATAR;
+}
+
+/* --------------------------------------------------------------------------
+   2. XỬ LÝ CHUYỂN TAB MƯỢT MÀ & VẼ LAI GIAO DIỆN
+   -------------------------------------------------------------------------- */
 function switchTab(tabId) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
     document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
@@ -44,20 +61,24 @@ function switchTab(tabId) {
     if (target) target.classList.add('active');
 
     if (window.event && window.event.target) {
-        window.event.target.classList.add('active');
+        let btn = window.event.target.closest('button');
+        if (btn) btn.classList.add('active');
     }
 
+    // Trigger vẽ lại UI tương ứng theo tab
     if (tabId === 'tab-home') renderDashboardCharts();
-    if (tabId === 'tab-labor') renderDisciplineDutyTab();
-    if (tabId === 'tab-posts') renderPostsFeed();
-    if (tabId === 'tab-tasks') renderTasks();
-    if (tabId === 'tab-fund') renderFundTab();
-    if (tabId === 'tab-memories') renderMemoriesTab();
-    if (tabId === 'tab-profile') renderUserProfile();
-    if (tabId === 'tab-games') openMiniGameSection('xo');
+    if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
+    if (tabId === 'tab-posts' && typeof renderPostsFeed === 'function') renderPostsFeed();
+    if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
+    if (tabId === 'tab-fund' && typeof renderFundTab === 'function') renderFundTab();
+    if (tabId === 'tab-memories' && typeof renderMemoriesTab === 'function') renderMemoriesTab();
+    if (tabId === 'tab-profile' && typeof renderUserProfile === 'function') renderUserProfile();
+    if (tabId === 'tab-games' && typeof openMiniGameSection === 'function') openMiniGameSection('xo');
 }
 
-/* Biểu đồ cột Trang chủ: Thống kê tổng số ngày lao động phạt (Mỗi cột một màu pastel riêng) */
+/* --------------------------------------------------------------------------
+   3. BIỂU ĐỒ TRANG CHỦ: THỐNG KÊ NGÀY LAO ĐỘNG PHẠT
+   -------------------------------------------------------------------------- */
 function renderDashboardCharts() {
     let canvasBar = document.getElementById('chartBarTasks');
     if (canvasBar && typeof Chart !== 'undefined') {
@@ -87,7 +108,6 @@ function renderDashboardCharts() {
             dataY = [0];
         }
 
-        // Bảng màu sắc pastel đa dạng cho mỗi cột
         const pastelColors = [
             '#ff6b6b', '#fcc419', '#52b788', '#48cae4', 
             '#a855f7', '#ff758f', '#3b82f6', '#10b981'
@@ -95,7 +115,12 @@ function renderDashboardCharts() {
 
         let backgroundColors = labelsX.map((_, index) => pastelColors[index % pastelColors.length]);
 
-        if (myBarChart) { myBarChart.destroy(); }
+        // Hủy chart cũ trước khi vẽ chart mới để tránh đè Canvas
+        if (myBarChart) { 
+            myBarChart.destroy(); 
+            myBarChart = null;
+        }
+
         let ctx = canvasBar.getContext('2d');
         
         myBarChart = new Chart(ctx, {
@@ -128,12 +153,22 @@ function renderDashboardCharts() {
     }
 }
 
+/* --------------------------------------------------------------------------
+   4. CÀI ĐẶT GIAO DIỆN / THEME VÀ ĐỒNG BỘ NGUYÊN BẢN
+   -------------------------------------------------------------------------- */
 function changeUserTheme(themeName) {
     document.body.className = '';
     if (themeName !== 'default') document.body.classList.add(`theme-${themeName}`);
+    
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
     currentUser.theme = themeName;
     localStorage.setItem('T132_CURRENT_USER', JSON.stringify(currentUser));
+    
+    // Đẩy thông tin người dùng cập nhật lên Firebase Realtime
+    if (typeof pushLocalDataToCloud === 'function') {
+        pushLocalDataToCloud();
+    }
+
     alert(`🎨 Đã đổi giao diện sang tông màu: ${themeName.toUpperCase()}`);
 }
 
