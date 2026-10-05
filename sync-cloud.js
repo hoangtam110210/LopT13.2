@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME CHUẨN (TỰ ĐỘNG GỘP BÀI, VI PHẠM & AVATAR USERS)
+   MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE (ĐỒNG BỘ TỨC THÌ & XÓA BÀI CHUẨN)
    ========================================================================== */
 
 const firebaseConfig = {
@@ -22,7 +22,7 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 let isPushingLocal = false;
 
 /* --------------------------------------------------------------------------
-   1. LẮNG NGHE SỰ THAY ĐỔI THEO THỜI GIAN THỰC (< 0.2 GIÂY)
+   1. LẮNG NGHE SỰ THAY ĐỔI REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN (< 0.2 GIÂY)
    -------------------------------------------------------------------------- */
 classDataRef.on('value', (snapshot) => {
     let cloudData = snapshot.val();
@@ -43,14 +43,14 @@ classDataRef.on('value', (snapshot) => {
         }
     }
 
-    updateLocalIfChanged('T132_POSTS', cloudData.posts);
-    updateLocalIfChanged('T132_DOCUMENTS', cloudData.documents);
-    updateLocalIfChanged('T132_USERS', cloudData.users);
-    updateLocalIfChanged('T132_LABOR_VIOLATIONS', cloudData.violations);
-    updateLocalIfChanged('T132_LABOR_SCHEDULE', cloudData.laborSchedule);
-    updateLocalIfChanged('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus);
-    updateLocalIfChanged('T132_TASKS', cloudData.tasks);
-    updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek);
+    updateLocalIfChanged('T132_POSTS', cloudData.posts || []);
+    updateLocalIfChanged('T132_DOCUMENTS', cloudData.documents || []);
+    updateLocalIfChanged('T132_USERS', cloudData.users || []);
+    updateLocalIfChanged('T132_LABOR_VIOLATIONS', cloudData.violations || []);
+    updateLocalIfChanged('T132_LABOR_SCHEDULE', cloudData.laborSchedule || {});
+    updateLocalIfChanged('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus || {});
+    updateLocalIfChanged('T132_TASKS', cloudData.tasks || []);
+    updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
 
     let activeEl = document.activeElement;
     let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
@@ -61,84 +61,24 @@ classDataRef.on('value', (snapshot) => {
 });
 
 /* --------------------------------------------------------------------------
-   2. HÀM ĐẨY DỮ LIỆU THÔNG MINH (GỘP BÀI, VI PHẠM VÀ AVATAR HỌC SINH)
+   2. ĐẨY DỮ LIỆU THỰC TẾ LÊN ĐÁM MÂY (ĐẢM BẢO XÓA/THÊM BÀI CHUẨN XÁC)
    -------------------------------------------------------------------------- */
 async function pushLocalDataToCloud() {
     isPushingLocal = true;
 
+    let payload = {
+        posts: JSON.parse(localStorage.getItem('T132_POSTS')) || [],
+        documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || [],
+        users: JSON.parse(localStorage.getItem('T132_USERS')) || [],
+        violations: JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [],
+        laborSchedule: JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || {},
+        laborDutyStatus: JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || {},
+        tasks: JSON.parse(localStorage.getItem('T132_TASKS')) || [],
+        currentWeek: parseInt(localStorage.getItem('T132_CURRENT_WEEK')) || 1,
+        lastUpdated: Date.now()
+    };
+
     try {
-        let snapshot = await classDataRef.once('value');
-        let cloudData = snapshot.val() || {};
-
-        // A. Gộp Bài Viết (Posts Merge)
-        let localPosts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
-        let cloudPosts = cloudData.posts || [];
-        let mergedPostsMap = {};
-        [...cloudPosts, ...localPosts].forEach(post => {
-            if (post && (post.id || post.time)) {
-                let key = post.id || (post.author + '_' + post.time);
-                mergedPostsMap[key] = post;
-            }
-        });
-        let finalPosts = Object.values(mergedPostsMap).sort((a, b) => (b.time || 0) - (a.time || 0));
-        localStorage.setItem('T132_POSTS', JSON.stringify(finalPosts));
-
-        // B. Gộp Vi Phạm Lao Động (Violations Merge)
-        let localViolations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [];
-        let cloudViolations = cloudData.violations || [];
-        let mergedViolationsMap = {};
-        [...cloudViolations, ...localViolations].forEach(v => {
-            if (v && (v.id || v.timestamp || v.studentName)) {
-                let key = v.id || (v.studentName + '_' + (v.timestamp || v.date));
-                mergedViolationsMap[key] = v;
-            }
-        });
-        let finalViolations = Object.values(mergedViolationsMap);
-        localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(finalViolations));
-
-        // C. Gộp Hồ Sơ & Avatar Học Sinh (Users Merge - CHỐNG MẤT AVATAR)
-        let localUsers = JSON.parse(localStorage.getItem('T132_USERS')) || [];
-        let cloudUsers = cloudData.users || [];
-        let mergedUsersMap = {};
-
-        // Đưa dữ liệu Cloud vào trước
-        cloudUsers.forEach(u => { if (u && u.name) mergedUsersMap[u.name] = u; });
-        
-        // Đưa dữ liệu Local vào và ưu tiên giữ Avatar nếu đã tải lên
-        localUsers.forEach(u => {
-            if (u && u.name) {
-                if (!mergedUsersMap[u.name]) {
-                    mergedUsersMap[u.name] = u;
-                } else {
-                    let existingAvatar = mergedUsersMap[u.name].avatar;
-                    let newAvatar = u.avatar;
-                    // Giữ avatar có chuỗi ảnh dài hơn (đã cài ảnh)
-                    let bestAvatar = (newAvatar && newAvatar.length > 50) ? newAvatar : existingAvatar;
-
-                    mergedUsersMap[u.name] = {
-                        ...mergedUsersMap[u.name],
-                        ...u,
-                        avatar: bestAvatar
-                    };
-                }
-            }
-        });
-        let finalUsers = Object.values(mergedUsersMap);
-        localStorage.setItem('T132_USERS', JSON.stringify(finalUsers));
-
-        // D. Đóng gói gửi lên Firebase
-        let payload = {
-            posts: finalPosts,
-            documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || cloudData.documents || [],
-            users: finalUsers,
-            violations: finalViolations,
-            laborSchedule: JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || cloudData.laborSchedule || {},
-            laborDutyStatus: JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || cloudData.laborDutyStatus || {},
-            tasks: JSON.parse(localStorage.getItem('T132_TASKS')) || cloudData.tasks || [],
-            currentWeek: parseInt(localStorage.getItem('T132_CURRENT_WEEK')) || cloudData.currentWeek || 1,
-            lastUpdated: Date.now()
-        };
-
         await classDataRef.set(payload);
     } catch (e) {
         console.error("Lỗi đồng bộ Realtime:", e);
@@ -148,7 +88,7 @@ async function pushLocalDataToCloud() {
 }
 
 /* --------------------------------------------------------------------------
-   3. CẬP NHẬT GIAO DIỆN
+   3. CẬP NHẬT GIAO DIỆN MÀN HÌNH ĐANG MỞ
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
     let activeTab = document.querySelector('.view-section.active');
@@ -170,7 +110,7 @@ window.addEventListener('load', () => {
     document.addEventListener('click', (e) => {
         let isActionButton = e.target.closest('button') || e.target.closest('input[type="checkbox"]') || e.target.closest('select');
         if (isActionButton) {
-            setTimeout(pushLocalDataToCloud, 400);
+            setTimeout(pushLocalDataToCloud, 250);
         }
     });
 });
