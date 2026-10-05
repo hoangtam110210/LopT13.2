@@ -54,7 +54,7 @@ function renderPostImagePreviews() {
     container.innerHTML = html;
 }
 
-// 4. Đăng bài viết
+// 4. Đăng bài viết (TỰ ĐỘNG BẮN LÊN FIREBASE)
 function submitNewPost() {
     let textInput = document.getElementById('post-text-input');
     let text = textInput ? textInput.value.trim() : "";
@@ -80,6 +80,12 @@ function submitNewPost() {
 
     posts.unshift(newPost);
     localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+
+    // ĐẨY BÀI MỚI LÊN FIREBASE
+    if (typeof pushLocalDataToCloud === 'function') {
+        pushLocalDataToCloud();
+    }
+
     alert("📤 Đã đăng bài viết lên Bảng Tin thành công!");
 
     pendingPostImages = [];
@@ -95,7 +101,7 @@ function renderPostsFeed() {
 
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    let isAdmin = isSystemAdmin();
+    let isAdmin = (typeof isSystemAdmin === 'function') ? isSystemAdmin() : true;
 
     if (posts.length === 0) {
         container.innerHTML = `<p style="color:#777; text-align:center; font-size:12px; margin-top:14px;">Chưa có bài đăng nào. Hãy là người đầu tiên đăng bài!</p>`;
@@ -160,10 +166,11 @@ function renderPostsFeed() {
     container.innerHTML = html;
 }
 
+// 6. Thích bài viết (TỰ ĐỘNG BẮN LÊN FIREBASE)
 function toggleLikePost(postId) {
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    let p = posts.find(x => x.id === postId);
+    let p = posts.find(x => x.id === postId || x.id == postId);
 
     if (p) {
         if (!p.likes) p.likes = [];
@@ -174,10 +181,16 @@ function toggleLikePost(postId) {
             p.likes.push(currentUser.name);
         }
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+
+        if (typeof pushLocalDataToCloud === 'function') {
+            pushLocalDataToCloud();
+        }
+
         renderPostsFeed();
     }
 }
 
+// 7. Thêm bình luận (TỰ ĐỘNG BẮN LÊN FIREBASE)
 function addPostComment(postId) {
     let input = document.getElementById(`comment-input-${postId}`);
     let text = input ? input.value.trim() : "";
@@ -185,7 +198,7 @@ function addPostComment(postId) {
 
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    let p = posts.find(x => x.id === postId);
+    let p = posts.find(x => x.id === postId || x.id == postId);
 
     if (p) {
         if (!p.comments) p.comments = [];
@@ -195,24 +208,153 @@ function addPostComment(postId) {
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
         });
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+
+        if (typeof pushLocalDataToCloud === 'function') {
+            pushLocalDataToCloud();
+        }
+
         input.value = "";
         renderPostsFeed();
     }
 }
 
+// 8. XÓA BÀI VIẾT (ĐỒNG BỘ TRỰC TIẾP LÊN FIREBASE MẤT VĨNH VIỄN)
 function deletePostToTrash(postId) {
     if (!confirm("Bạn có chắc muốn xoá bài viết này?")) return;
 
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let deletedPosts = JSON.parse(localStorage.getItem('T132_DELETED_POSTS')) || [];
 
-    let idx = posts.findIndex(p => p.id === postId);
+    let idx = posts.findIndex(p => p.id === postId || p.id == postId);
     if (idx > -1) {
         deletedPosts.unshift(posts[idx]);
         posts.splice(idx, 1);
+
+        // Lưu danh sách bài đã xoá và danh sách bài còn lại
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
         localStorage.setItem('T132_DELETED_POSTS', JSON.stringify(deletedPosts));
+
+        // BẮN NGAY LÊN FIREBASE ĐỂ TẤT CẢ CÁC MÁY KHÁC ĐỀU BỊ XÓA BÀI NÀY
+        if (typeof pushLocalDataToCloud === 'function') {
+            pushLocalDataToCloud();
+        }
+
         alert("🗑️ Bài viết đã được chuyển vào Kho bài đã xoá!");
         renderPostsFeed();
     }
+}
+
+/* ==========================================================================
+   MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE
+   ========================================================================== */
+
+const APP_VERSION = "v12_clean"; // Tự làm sạch dữ liệu rác cũ khi lên v12
+
+if (localStorage.getItem('T132_VERSION_TAG') !== APP_VERSION) {
+    localStorage.removeItem('T132_POSTS');
+    localStorage.setItem('T132_VERSION_TAG', APP_VERSION);
+}
+
+const firebaseConfig = {
+  apiKey: "AIzaSyD7MXRkTbqn-QqLjMSi9BkVkOlDaYsvbP8",
+  authDomain: "t132-hub.firebaseapp.com",
+  databaseURL: "https://t132-hub-default-rtdb.firebaseio.com",
+  projectId: "t132-hub",
+  storageBucket: "t132-hub.firebasestorage.app",
+  messagingSenderId: "247212478029",
+  appId: "1:247212478029:web:27b3e97fbf93208ef61604"
+};
+
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
+
+const db = firebase.database();
+const classDataRef = db.ref('T132_CLASS_DATA');
+
+let isPushingLocal = false;
+
+/* --------------------------------------------------------------------------
+   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN
+   -------------------------------------------------------------------------- */
+classDataRef.on('value', (snapshot) => {
+    if (isPushingLocal) return;
+
+    let cloudData = snapshot.val();
+    if (!cloudData) return;
+
+    let hasRealChange = false;
+
+    function updateLocalIfChanged(key, cloudValue) {
+        if (cloudValue === undefined || cloudValue === null) return;
+        let currentStr = localStorage.getItem(key) || '';
+        let newStr = JSON.stringify(cloudValue);
+
+        if (currentStr !== newStr) {
+            localStorage.setItem(key, newStr);
+            hasRealChange = true;
+        }
+    }
+
+    updateLocalIfChanged('T132_POSTS', cloudData.posts || []);
+    updateLocalIfChanged('T132_DOCUMENTS', cloudData.documents || []);
+    updateLocalIfChanged('T132_USERS', cloudData.users || []);
+    updateLocalIfChanged('T132_LABOR_VIOLATIONS', cloudData.violations || []);
+    updateLocalIfChanged('T132_LABOR_SCHEDULE', cloudData.laborSchedule || {});
+    updateLocalIfChanged('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus || {});
+    updateLocalIfChanged('T132_TASKS', cloudData.tasks || []);
+    updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
+
+    let activeEl = document.activeElement;
+    let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
+
+    if (hasRealChange && !isEditingText) {
+        refreshActiveTabUI();
+    }
+});
+
+/* --------------------------------------------------------------------------
+   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY CHÍNH XÁC
+   -------------------------------------------------------------------------- */
+async function pushLocalDataToCloud() {
+    isPushingLocal = true;
+
+    let payload = {
+        posts: JSON.parse(localStorage.getItem('T132_POSTS')) || [],
+        documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || [],
+        users: JSON.parse(localStorage.getItem('T132_USERS')) || [],
+        violations: JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [],
+        laborSchedule: JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || {},
+        laborDutyStatus: JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || {},
+        tasks: JSON.parse(localStorage.getItem('T132_TASKS')) || [],
+        currentWeek: parseInt(localStorage.getItem('T132_CURRENT_WEEK')) || 1,
+        lastUpdated: Date.now()
+    };
+
+    try {
+        await classDataRef.set(payload);
+    } catch (e) {
+        console.error("Lỗi đồng bộ Realtime:", e);
+    } finally {
+        setTimeout(() => { isPushingLocal = false; }, 400);
+    }
+}
+
+/* --------------------------------------------------------------------------
+   3. CẬP NHẬT GIAO DIỆN HIỆN TẠI
+   -------------------------------------------------------------------------- */
+function refreshActiveTabUI() {
+    let activeTab = document.querySelector('.view-section.active');
+    if (!activeTab) return;
+
+    let tabId = activeTab.id;
+    if (tabId === 'tab-posts') {
+        if (typeof renderPostsFeed === 'function') renderPostsFeed();
+        else if (typeof renderPosts === 'function') renderPosts();
+    }
+    if (tabId === 'tab-docs' && typeof renderDocumentsList === 'function') renderDocumentsList();
+    if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
+    if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
+    if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
+    if (tabId === 'tab-home' && typeof renderDashboardCharts === 'function') renderDashboardCharts();
 }
