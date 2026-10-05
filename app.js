@@ -12,12 +12,13 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* --------------------------------------------------------------------------
-   1. KHỞI CHẠY ỨNG DỤNG & CẬP NHẬT HEADER
+   1. KHỞI CHẠY ỨNG DỤNG & TỰ ĐỘNG ĐỒNG BỘ AVATAR TÀI KHOẢN
    -------------------------------------------------------------------------- */
 function startApp() {
     updateHeaderUserInfo();
+    autoSyncAvatarToClassList(); // Tự động gắn Avatar cá nhân vào danh sách T132_USERS và đẩy lên Cloud
 
-    // Khởi tạo các Sub-module
+    // Khởi tạo các Sub-module (kiểm tra an toàn tồn tại hàm)
     if (typeof renderAdminPanel === 'function') renderAdminPanel();
     if (typeof renderRandomModule === 'function') renderRandomModule();
     if (typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
@@ -48,6 +49,45 @@ function updateHeaderUserInfo() {
     if (nameEl) nameEl.innerText = displayName;
     if (roleEl) roleEl.innerText = user.role || "Thành viên";
     if (avatarEl) avatarEl.src = user.avatar || DEFAULT_AVATAR;
+}
+
+// TỰ ĐỘNG KHỚP VÀ ĐỒNG BỘ AVATAR CÁ NHÂN VÀO DANH SÁCH LỚP T132_USERS
+function autoSyncAvatarToClassList() {
+    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+    if (!currentUser.name || !currentUser.avatar) return;
+
+    let users = JSON.parse(localStorage.getItem('T132_USERS')) || [];
+    if (users.length === 0) return;
+
+    let isUpdated = false;
+
+    users = users.map(u => {
+        // So sánh trùng tên chính xác hoặc khớp chuỗi tên (VD: "Tâm" và "Hoàng Ngọc Minh Tâm")
+        let isMatch = u.name === currentUser.name ||
+                      (currentUser.name && u.name && currentUser.name.includes(u.name)) ||
+                      (currentUser.name && u.name && u.name.includes(currentUser.name));
+
+        if (isMatch) {
+            if (u.avatar !== currentUser.avatar) {
+                u.avatar = currentUser.avatar;
+                isUpdated = true;
+            }
+            if (currentUser.nickname && u.nickname !== currentUser.nickname) {
+                u.nickname = currentUser.nickname;
+                isUpdated = true;
+            }
+        }
+        return u;
+    });
+
+    if (isUpdated) {
+        localStorage.setItem('T132_USERS', JSON.stringify(users));
+        
+        // Đẩy danh sách đã cập nhật Avatar lên Firebase Realtime
+        if (typeof pushLocalDataToCloud === 'function') {
+            pushLocalDataToCloud();
+        }
+    }
 }
 
 /* --------------------------------------------------------------------------
@@ -181,7 +221,7 @@ function applySavedTheme() {
 }
 
 /* --------------------------------------------------------------------------
-   5. ĐỒNG BỘ AVATAR HỒ SƠ TỰ ĐỘNG VÀO DANH SÁCH LỚP (T132_USERS)
+   5. CẬP NHẬT HỒ SƠ TỪ TAB CÁ NHÂN
    -------------------------------------------------------------------------- */
 function updateUserProfileData(newAvatar, newNickname) {
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
@@ -189,39 +229,11 @@ function updateUserProfileData(newAvatar, newNickname) {
     if (newAvatar) currentUser.avatar = newAvatar;
     if (newNickname !== undefined) currentUser.nickname = newNickname;
     
-    // 1. Lưu User hiện tại
     localStorage.setItem('T132_CURRENT_USER', JSON.stringify(currentUser));
     updateHeaderUserInfo();
+    autoSyncAvatarToClassList();
 
-    // 2. Đồng bộ Avatar vào Danh sách tổng T132_USERS (Sửa triệt để lỗi Tab Random)
-    let users = JSON.parse(localStorage.getItem('T132_USERS')) || [];
-    let found = false;
-
-    users = users.map(u => {
-        if (u.name === currentUser.name || u.id === currentUser.id) {
-            found = true;
-            return {
-                ...u,
-                avatar: currentUser.avatar || u.avatar,
-                nickname: currentUser.nickname || u.nickname
-            };
-        }
-        return u;
-    });
-
-    if (!found && currentUser.name) {
-        users.push(currentUser);
-    }
-
-    localStorage.setItem('T132_USERS', JSON.stringify(users));
-
-    // 3. Đẩy dữ liệu mới lên Firebase Realtime cho cả lớp
-    if (typeof pushLocalDataToCloud === 'function') {
-        pushLocalDataToCloud();
-    }
-
-    // 4. Tải lại Tab Random nếu đang mở
-    if (typeof renderRandomModule === 'function') {
-        renderRandomModule();
+    if (typeof renderUserProfile === 'function') {
+        renderUserProfile();
     }
 }
