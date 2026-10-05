@@ -1,13 +1,13 @@
 /* ========================================================
-   BẢNG TIN - ĐỌC ĐƠN LẺ TỪNG ẢNH/VIDEO & ĐĂNG BÀI AN TOÀN
+   BẢNG TIN - QUẢN LÝ BÀI ĐĂNG (CHỮ, ÁNH, VIDEO), LIKES, BÌNH LUẬN & XÓA BÀI
    ======================================================== */
 
 // Ảnh đại diện dự phòng an toàn chống ngắt hàm
 const SAFE_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
 
-let pendingPostImages = []; // Danh sách mảng ảnh chờ đăng
+let pendingPostImages = []; // Danh sách mảng ảnh/video chờ đăng
 
-// 1. Đọc từng file ảnh/video
+// 1. Đọc từng file ảnh/video đính kèm
 function addSinglePostImage(event) {
     let file = event.target.files ? event.target.files[0] : null;
     if (!file) return;
@@ -30,7 +30,7 @@ function removePendingPostImage(index) {
     renderPostImagePreviews();
 }
 
-// 3. Hiển thị danh sách ảnh/video đã chọn
+// 3. Hiển thị danh sách ảnh/video xem trước
 function renderPostImagePreviews() {
     let container = document.getElementById('post-images-preview-box');
     if (!container) return;
@@ -55,9 +55,9 @@ function renderPostImagePreviews() {
     container.innerHTML = html;
 }
 
-// 4. ĐĂNG BÀI VIẾT MỚI (CHỐNG LỖI 100%)
+// 4. ĐĂNG BÀI VIẾT MỚI (CHỐNG LỖI VĂN BẢN VÀ LỖI CÚ PHÁP)
 function submitNewPost(e) {
-    if (e && e.preventDefault) e.preventDefault(); // Chặn reload trang nếu nằm trong form
+    if (e && e.preventDefault) e.preventDefault();
 
     try {
         let textInput = document.getElementById('post-text-input');
@@ -86,25 +86,25 @@ function submitNewPost(e) {
             authorName: authorName,
             authorAvatar: authorAvatar,
             text: text,
-            media: [...pendingPostImages],
+            media: [...(pendingPostImages || [])],
             time: new Date().toLocaleString('vi-VN'),
             likes: [],
             comments: []
         };
 
-        // Thêm vào đầu danh sách local
+        // Thêm bài viết mới vào đầu danh sách local
         posts.unshift(newPost);
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
 
-        // Dọn dẹp ô nhập liệu
+        // Dọn dẹp ô nhập văn bản và ảnh chờ
         pendingPostImages = [];
         renderPostImagePreviews();
         if (textInput) textInput.value = "";
 
-        // Vẽ lại bảng tin ngay lập tức
+        // Vẽ lại giao diện Bảng tin ngay lập tức
         renderPostsFeed();
 
-        // Đẩy dữ liệu lên Cloud ngầm
+        // Đẩy bài mới lên Firebase Cloud Realtime
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
@@ -117,7 +117,7 @@ function submitNewPost(e) {
     }
 }
 
-// 5. HIỂN THỊ BẢNG TIN
+// 5. HIỂN THỊ DẠNG THẺ BÀI ĐĂNG
 function renderPostsFeed() {
     let container = document.getElementById('posts-feed-container');
     if (!container) return;
@@ -271,126 +271,4 @@ function deletePostToTrash(postId) {
 
         alert("🗑️ Bài viết đã được chuyển vào Kho bài đã xoá!");
     }
-}
-alDataToCloud === 'function') {
-            pushLocalDataToCloud();
-        }
-
-        alert("🗑️ Bài viết đã được chuyển vào Kho bài đã xoá!");
-        renderPostsFeed();
-    }
-}
-=========================
-   MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE
-   ========================================================================== */
-
-const APP_VERSION = "v12_clean"; // Tự làm sạch dữ liệu rác cũ khi lên v12
-
-if (localStorage.getItem('T132_VERSION_TAG') !== APP_VERSION) {
-    localStorage.removeItem('T132_POSTS');
-    localStorage.setItem('T132_VERSION_TAG', APP_VERSION);
-}
-
-const firebaseConfig = {
-  apiKey: "AIzaSyD7MXRkTbqn-QqLjMSi9BkVkOlDaYsvbP8",
-  authDomain: "t132-hub.firebaseapp.com",
-  databaseURL: "https://t132-hub-default-rtdb.firebaseio.com",
-  projectId: "t132-hub",
-  storageBucket: "t132-hub.firebasestorage.app",
-  messagingSenderId: "247212478029",
-  appId: "1:247212478029:web:27b3e97fbf93208ef61604"
-};
-
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-}
-
-const db = firebase.database();
-const classDataRef = db.ref('T132_CLASS_DATA');
-
-let isPushingLocal = false;
-
-/* --------------------------------------------------------------------------
-   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN
-   -------------------------------------------------------------------------- */
-classDataRef.on('value', (snapshot) => {
-    if (isPushingLocal) return;
-
-    let cloudData = snapshot.val();
-    if (!cloudData) return;
-
-    let hasRealChange = false;
-
-    function updateLocalIfChanged(key, cloudValue) {
-        if (cloudValue === undefined || cloudValue === null) return;
-        let currentStr = localStorage.getItem(key) || '';
-        let newStr = JSON.stringify(cloudValue);
-
-        if (currentStr !== newStr) {
-            localStorage.setItem(key, newStr);
-            hasRealChange = true;
-        }
-    }
-
-    updateLocalIfChanged('T132_POSTS', cloudData.posts || []);
-    updateLocalIfChanged('T132_DOCUMENTS', cloudData.documents || []);
-    updateLocalIfChanged('T132_USERS', cloudData.users || []);
-    updateLocalIfChanged('T132_LABOR_VIOLATIONS', cloudData.violations || []);
-    updateLocalIfChanged('T132_LABOR_SCHEDULE', cloudData.laborSchedule || {});
-    updateLocalIfChanged('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus || {});
-    updateLocalIfChanged('T132_TASKS', cloudData.tasks || []);
-    updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
-
-    let activeEl = document.activeElement;
-    let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
-
-    if (hasRealChange && !isEditingText) {
-        refreshActiveTabUI();
-    }
-});
-
-/* --------------------------------------------------------------------------
-   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY CHÍNH XÁC
-   -------------------------------------------------------------------------- */
-async function pushLocalDataToCloud() {
-    isPushingLocal = true;
-
-    let payload = {
-        posts: JSON.parse(localStorage.getItem('T132_POSTS')) || [],
-        documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || [],
-        users: JSON.parse(localStorage.getItem('T132_USERS')) || [],
-        violations: JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [],
-        laborSchedule: JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || {},
-        laborDutyStatus: JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || {},
-        tasks: JSON.parse(localStorage.getItem('T132_TASKS')) || [],
-        currentWeek: parseInt(localStorage.getItem('T132_CURRENT_WEEK')) || 1,
-        lastUpdated: Date.now()
-    };
-
-    try {
-        await classDataRef.set(payload);
-    } catch (e) {
-        console.error("Lỗi đồng bộ Realtime:", e);
-    } finally {
-        setTimeout(() => { isPushingLocal = false; }, 400);
-    }
-}
-
-/* --------------------------------------------------------------------------
-   3. CẬP NHẬT GIAO DIỆN HIỆN TẠI
-   -------------------------------------------------------------------------- */
-function refreshActiveTabUI() {
-    let activeTab = document.querySelector('.view-section.active');
-    if (!activeTab) return;
-
-    let tabId = activeTab.id;
-    if (tabId === 'tab-posts') {
-        if (typeof renderPostsFeed === 'function') renderPostsFeed();
-        else if (typeof renderPosts === 'function') renderPosts();
-    }
-    if (tabId === 'tab-docs' && typeof renderDocumentsList === 'function') renderDocumentsList();
-    if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
-    if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
-    if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
-    if (tabId === 'tab-home' && typeof renderDashboardCharts === 'function') renderDashboardCharts();
 }
