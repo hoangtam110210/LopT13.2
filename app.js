@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function startApp() {
     updateHeaderUserInfo();
 
-    // Khởi tạo các Sub-module (kiểm tra an toàn tồn tại hàm)
+    // Khởi tạo các Sub-module
     if (typeof renderAdminPanel === 'function') renderAdminPanel();
     if (typeof renderRandomModule === 'function') renderRandomModule();
     if (typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
@@ -51,7 +51,7 @@ function updateHeaderUserInfo() {
 }
 
 /* --------------------------------------------------------------------------
-   2. XỬ LÝ CHUYỂN TAB MƯỢT MÀ & VẼ LAI GIAO DIỆN
+   2. XỬ LÝ CHUYỂN TAB MƯỢT MÀ & VẼ LẠI GIAO DIỆN
    -------------------------------------------------------------------------- */
 function switchTab(tabId) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -74,6 +74,7 @@ function switchTab(tabId) {
     if (tabId === 'tab-memories' && typeof renderMemoriesTab === 'function') renderMemoriesTab();
     if (tabId === 'tab-profile' && typeof renderUserProfile === 'function') renderUserProfile();
     if (tabId === 'tab-games' && typeof openMiniGameSection === 'function') openMiniGameSection('xo');
+    if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
 }
 
 /* --------------------------------------------------------------------------
@@ -115,7 +116,7 @@ function renderDashboardCharts() {
 
         let backgroundColors = labelsX.map((_, index) => pastelColors[index % pastelColors.length]);
 
-        // Hủy chart cũ trước khi vẽ chart mới để tránh đè Canvas
+        // Hủy chart cũ an toàn trước khi vẽ chart mới
         if (myBarChart) { 
             myBarChart.destroy(); 
             myBarChart = null;
@@ -154,7 +155,7 @@ function renderDashboardCharts() {
 }
 
 /* --------------------------------------------------------------------------
-   4. CÀI ĐẶT GIAO DIỆN / THEME VÀ ĐỒNG BỘ NGUYÊN BẢN
+   4. CÀI ĐẶT GIAO DIỆN / THEME
    -------------------------------------------------------------------------- */
 function changeUserTheme(themeName) {
     document.body.className = '';
@@ -164,7 +165,6 @@ function changeUserTheme(themeName) {
     currentUser.theme = themeName;
     localStorage.setItem('T132_CURRENT_USER', JSON.stringify(currentUser));
     
-    // Đẩy thông tin người dùng cập nhật lên Firebase Realtime
     if (typeof pushLocalDataToCloud === 'function') {
         pushLocalDataToCloud();
     }
@@ -177,5 +177,51 @@ function applySavedTheme() {
     if (currentUser.theme && currentUser.theme !== 'default') {
         document.body.className = '';
         document.body.classList.add(`theme-${currentUser.theme}`);
+    }
+}
+
+/* --------------------------------------------------------------------------
+   5. ĐỒNG BỘ AVATAR HỒ SƠ TỰ ĐỘNG VÀO DANH SÁCH LỚP (T132_USERS)
+   -------------------------------------------------------------------------- */
+function updateUserProfileData(newAvatar, newNickname) {
+    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+    
+    if (newAvatar) currentUser.avatar = newAvatar;
+    if (newNickname !== undefined) currentUser.nickname = newNickname;
+    
+    // 1. Lưu User hiện tại
+    localStorage.setItem('T132_CURRENT_USER', JSON.stringify(currentUser));
+    updateHeaderUserInfo();
+
+    // 2. Đồng bộ Avatar vào Danh sách tổng T132_USERS (Sửa triệt để lỗi Tab Random)
+    let users = JSON.parse(localStorage.getItem('T132_USERS')) || [];
+    let found = false;
+
+    users = users.map(u => {
+        if (u.name === currentUser.name || u.id === currentUser.id) {
+            found = true;
+            return {
+                ...u,
+                avatar: currentUser.avatar || u.avatar,
+                nickname: currentUser.nickname || u.nickname
+            };
+        }
+        return u;
+    });
+
+    if (!found && currentUser.name) {
+        users.push(currentUser);
+    }
+
+    localStorage.setItem('T132_USERS', JSON.stringify(users));
+
+    // 3. Đẩy dữ liệu mới lên Firebase Realtime cho cả lớp
+    if (typeof pushLocalDataToCloud === 'function') {
+        pushLocalDataToCloud();
+    }
+
+    // 4. Tải lại Tab Random nếu đang mở
+    if (typeof renderRandomModule === 'function') {
+        renderRandomModule();
     }
 }
