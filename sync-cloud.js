@@ -1,6 +1,16 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME TỐI ƯU CỰC KỲ MƯỢT MÀ (T132 HUB)
+   MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE (TỰ ĐỘNG RESET BỘ NHỚ RÁC V11)
    ========================================================================== */
+
+const APP_VERSION = "v11_clean"; // Mã phiên bản làm sạch dữ liệu
+
+// Tự động dọn dẹp bộ nhớ cũ trên máy học sinh khi lên phiên bản mới
+if (localStorage.getItem('T132_VERSION_TAG') !== APP_VERSION) {
+    localStorage.removeItem('T132_POSTS');
+    localStorage.removeItem('T132_USERS');
+    localStorage.removeItem('T132_LABOR_VIOLATIONS');
+    localStorage.setItem('T132_VERSION_TAG', APP_VERSION);
+}
 
 const firebaseConfig = {
   apiKey: "AIzaSyD7MXRkTbqn-QqLjMSi9BkVkOlDaYsvbP8",
@@ -22,10 +32,10 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 let isPushingLocal = false;
 
 /* --------------------------------------------------------------------------
-   1. LẮNG NGHE LÊN ĐÁM MÂY TỰ ĐỘNG CẬP NHẬT GIAO DIỆN (< 0.2 GIÂY)
+   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN
    -------------------------------------------------------------------------- */
 classDataRef.on('value', (snapshot) => {
-    if (isPushingLocal) return; // Khóa cập nhật ngược khi máy đang đẩy bài
+    if (isPushingLocal) return;
 
     let cloudData = snapshot.val();
     if (!cloudData) return;
@@ -52,7 +62,6 @@ classDataRef.on('value', (snapshot) => {
     updateLocalIfChanged('T132_TASKS', cloudData.tasks || []);
     updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
 
-    // Không vẽ lại nếu học sinh đang gõ văn bản
     let activeEl = document.activeElement;
     let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
 
@@ -62,7 +71,7 @@ classDataRef.on('value', (snapshot) => {
 });
 
 /* --------------------------------------------------------------------------
-   2. HÀM ĐẨY DỮ LIỆU AN TOÀN (CHỈ CHẠY KHI ĐƯỢC GỌI TRỰC TIẾP)
+   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY CHÍNH XÁC
    -------------------------------------------------------------------------- */
 async function pushLocalDataToCloud() {
     isPushingLocal = true;
@@ -84,13 +93,12 @@ async function pushLocalDataToCloud() {
     } catch (e) {
         console.error("Lỗi đồng bộ Realtime:", e);
     } finally {
-        // Giữ khóa trong 500ms để Firebase xử lý xong hoàn toàn
-        setTimeout(() => { isPushingLocal = false; }, 500);
+        setTimeout(() => { isPushingLocal = false; }, 400);
     }
 }
 
 /* --------------------------------------------------------------------------
-   3. TỰ ĐỘNG CẬP NHẬT TAB ĐANG MỞ
+   3. CẬP NHẬT GIAO DIỆN HIỆN TẠI
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
     let activeTab = document.querySelector('.view-section.active');
@@ -106,5 +114,4 @@ function refreshActiveTabUI() {
     if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
     if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
     if (tabId === 'tab-home' && typeof renderDashboardCharts === 'function') renderDashboardCharts();
-    if (tabId === 'tab-profile' && typeof renderUserProfile === 'function') renderUserProfile();
 }
