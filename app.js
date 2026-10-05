@@ -6,19 +6,31 @@ let myBarChart = null;
 const DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
 
 document.addEventListener("DOMContentLoaded", () => {
-    if (typeof initDefaultData === 'function') initDefaultData();
     applySavedTheme();
     startApp();
 });
 
 /* --------------------------------------------------------------------------
-   1. KHỞI CHẠY ỨNG DỤNG & TỰ ĐỘNG ĐỒNG BỘ AVATAR TÀI KHOẢN
+   1. KHỞI CHẠY ỨNG DỤNG & TỰ ĐỘNG PHỤC HỒI DANH SÁCH LỚP 35 NGƯỜI
    -------------------------------------------------------------------------- */
 function startApp() {
-    updateHeaderUserInfo();
-    autoSyncAvatarToClassList(); // Tự động gắn Avatar cá nhân vào danh sách T132_USERS và đẩy lên Cloud
+    // Kiểm tra nếu danh sách bị rỗng hoặc bị thiếu (dưới 10 người), tự động khôi phục lại đủ 35 học sinh
+    let currentUsers = [];
+    try {
+        currentUsers = JSON.parse(localStorage.getItem('T132_USERS')) || [];
+    } catch(e) {}
 
-    // Khởi tạo các Sub-module (kiểm tra an toàn tồn tại hàm)
+    if (currentUsers.length < 10 && typeof initDefaultData === 'function') {
+        initDefaultData(); // Tự nạp lại 35 học sinh mặc định
+        if (typeof pushLocalDataToCloud === 'function') {
+            pushLocalDataToCloud(); // Đẩy ngay lên Firebase để tất cả các máy khác cùng nhận đủ 35 bạn
+        }
+    }
+
+    updateHeaderUserInfo();
+    autoSyncAvatarToClassList(); // Khớp và nạp Avatar cá nhân vào danh sách lớp
+
+    // Khởi tạo các Sub-module
     if (typeof renderAdminPanel === 'function') renderAdminPanel();
     if (typeof renderRandomModule === 'function') renderRandomModule();
     if (typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
@@ -62,7 +74,6 @@ function autoSyncAvatarToClassList() {
     let isUpdated = false;
 
     users = users.map(u => {
-        // So sánh trùng tên chính xác hoặc khớp chuỗi tên (VD: "Tâm" và "Hoàng Ngọc Minh Tâm")
         let isMatch = u.name === currentUser.name ||
                       (currentUser.name && u.name && currentUser.name.includes(u.name)) ||
                       (currentUser.name && u.name && u.name.includes(currentUser.name));
@@ -82,8 +93,6 @@ function autoSyncAvatarToClassList() {
 
     if (isUpdated) {
         localStorage.setItem('T132_USERS', JSON.stringify(users));
-        
-        // Đẩy danh sách đã cập nhật Avatar lên Firebase Realtime
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
@@ -156,7 +165,6 @@ function renderDashboardCharts() {
 
         let backgroundColors = labelsX.map((_, index) => pastelColors[index % pastelColors.length]);
 
-        // Hủy chart cũ an toàn trước khi vẽ chart mới
         if (myBarChart) { 
             myBarChart.destroy(); 
             myBarChart = null;
