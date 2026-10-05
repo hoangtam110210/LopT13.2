@@ -1,29 +1,26 @@
 /* ========================================================
-   BẢNG TIN - QUẢN LÝ BÀI ĐĂNG (CHỐNG TRÀN BỘ NHỚ QUOTA EXCEEDED)
+   BẢNG TIN - QUẢN LÝ BÀI ĐĂNG (TRUYỀN DỮ LIỆU TRỰC TIẾP CHỐNG MẤT BÀI)
    ======================================================== */
 
 const SAFE_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
 
 let pendingPostImages = []; 
 
-// Hàm lưu an toàn: Tự dọn dẹp bài cũ nếu máy học sinh bị đầy bộ nhớ 5MB
 function safeSavePostsToLocalStorage(posts) {
-    let limit = 15; // Giữ tối đa 15 bài mới nhất ở máy
+    let limit = 15;
     let listToSave = posts.slice(0, limit);
 
     while (limit > 0) {
         try {
             localStorage.setItem('T132_POSTS', JSON.stringify(listToSave));
-            break; // Lưu thành công thì thoát
+            break;
         } catch (e) {
-            // Nếu bị tràn bộ nhớ QuotaExceeded, giảm bớt bài cũ và xóa rác
             limit -= 3;
             listToSave = posts.slice(0, Math.max(1, limit));
         }
     }
 }
 
-// 1. Đọc từng file ảnh/video
 function addSinglePostImage(event) {
     let file = event.target.files ? event.target.files[0] : null;
     if (!file) return;
@@ -40,13 +37,11 @@ function addSinglePostImage(event) {
     event.target.value = '';
 }
 
-// 2. Xóa 1 ảnh xem trước
 function removePendingPostImage(index) {
     pendingPostImages.splice(index, 1);
     renderPostImagePreviews();
 }
 
-// 3. Hiển thị danh sách ảnh/video xem trước
 function renderPostImagePreviews() {
     let container = document.getElementById('post-images-preview-box');
     if (!container) return;
@@ -71,7 +66,7 @@ function renderPostImagePreviews() {
     container.innerHTML = html;
 }
 
-// 4. ĐĂNG BÀI VIẾT MỚI (CHỐNG LỖI 100%)
+// ĐĂNG BÀI VIẾT MỚI: TRUYỀN THẲNG DỮ LIỆU KHÔNG PHỤ THUỘC LOCALSTORAGE
 function submitNewPost(e) {
     if (e && e.preventDefault) e.preventDefault();
 
@@ -106,20 +101,20 @@ function submitNewPost(e) {
 
         posts.unshift(newPost);
 
-        // Lưu an toàn chống tràn bộ nhớ
+        // Lưu bộ nhớ đệm
         safeSavePostsToLocalStorage(posts);
 
-        // Dọn dẹp ô nhập
+        // Dọn dẹp form
         pendingPostImages = [];
         renderPostImagePreviews();
         if (textInput) textInput.value = "";
 
-        // Vẽ lại giao diện
-        renderPostsFeed();
+        // Hiển thị ngay lập tức mảng bài viết vừa tạo lên màn hình
+        renderPostsFeed(posts);
 
-        // Đẩy bài mới lên Firebase Cloud
+        // Đẩy thẳng mảng bài viết này lên Firebase Cloud Realtime
         if (typeof pushLocalDataToCloud === 'function') {
-            pushLocalDataToCloud();
+            pushLocalDataToCloud(posts);
         }
 
         alert("📤 Đã đăng bài viết thành công!");
@@ -129,20 +124,22 @@ function submitNewPost(e) {
     }
 }
 
-// 5. HIỂN THỊ DẠNG THẺ BÀI ĐĂNG
-function renderPostsFeed() {
+// HIỂN THỊ DẠNG THẺ BÀI ĐĂNG (CHẤP NHẬN MẢNG TRUYỀN VÀO TRỰC TIẾP)
+function renderPostsFeed(customPosts) {
     let container = document.getElementById('posts-feed-container');
     if (!container) return;
 
-    let posts = [];
-    try { posts = JSON.parse(localStorage.getItem('T132_POSTS')) || []; } catch(e) {}
+    let posts = customPosts;
+    if (!posts) {
+        try { posts = JSON.parse(localStorage.getItem('T132_POSTS')) || []; } catch(e) { posts = []; }
+    }
 
     let currentUser = {};
     try { currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {}; } catch(e) {}
 
     let isAdmin = (typeof isSystemAdmin === 'function') ? isSystemAdmin() : true;
 
-    if (posts.length === 0) {
+    if (!posts || posts.length === 0) {
         container.innerHTML = `<p style="color:#777; text-align:center; font-size:12px; margin-top:14px;">Chưa có bài đăng nào. Hãy là người đầu tiên đăng bài!</p>`;
         return;
     }
@@ -206,7 +203,6 @@ function renderPostsFeed() {
     container.innerHTML = html;
 }
 
-// 6. THÍCH BÀI VIẾT
 function toggleLikePost(postId) {
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
@@ -221,15 +217,14 @@ function toggleLikePost(postId) {
             p.likes.push(currentUser.name);
         }
         safeSavePostsToLocalStorage(posts);
-        renderPostsFeed();
+        renderPostsFeed(posts);
 
         if (typeof pushLocalDataToCloud === 'function') {
-            pushLocalDataToCloud();
+            pushLocalDataToCloud(posts);
         }
     }
 }
 
-// 7. THÊM BÌNH LUẬN
 function addPostComment(postId) {
     let input = document.getElementById(`comment-input-${postId}`);
     let text = input ? input.value.trim() : "";
@@ -248,15 +243,14 @@ function addPostComment(postId) {
         });
         safeSavePostsToLocalStorage(posts);
         input.value = "";
-        renderPostsFeed();
+        renderPostsFeed(posts);
 
         if (typeof pushLocalDataToCloud === 'function') {
-            pushLocalDataToCloud();
+            pushLocalDataToCloud(posts);
         }
     }
 }
 
-// 8. XÓA BÀI VIẾT
 function deletePostToTrash(postId) {
     if (!confirm("Bạn có chắc muốn xoá bài viết này?")) return;
 
@@ -271,10 +265,10 @@ function deletePostToTrash(postId) {
         safeSavePostsToLocalStorage(posts);
         localStorage.setItem('T132_DELETED_POSTS', JSON.stringify(deletedPosts));
 
-        renderPostsFeed();
+        renderPostsFeed(posts);
 
         if (typeof pushLocalDataToCloud === 'function') {
-            pushLocalDataToCloud();
+            pushLocalDataToCloud(posts);
         }
 
         alert("🗑️ Bài viết đã được chuyển vào Kho bài đã xoá!");
