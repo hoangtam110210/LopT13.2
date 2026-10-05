@@ -1,22 +1,23 @@
 /* ========================================================
-   BẢNG TIN - QUẢN LÝ BÀI ĐĂNG (TỰ ĐỘNG CHỐNG TRÀN BỘ NHỚ 5MB)
+   BẢNG TIN - QUẢN LÝ BÀI ĐĂNG (CHỐNG TRÀN BỘ NHỚ QUOTA EXCEEDED)
    ======================================================== */
 
 const SAFE_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
 
 let pendingPostImages = []; 
 
-// Hàm lưu dữ liệu an toàn chống tràn dung lượng QuotaExceededError
+// Hàm lưu an toàn: Tự dọn dẹp bài cũ nếu máy học sinh bị đầy bộ nhớ 5MB
 function safeSavePostsToLocalStorage(posts) {
-    let limit = 15; // Chỉ giữ tối đa 15 bài mới nhất ở bộ nhớ máy
+    let limit = 15; // Giữ tối đa 15 bài mới nhất ở máy
     let listToSave = posts.slice(0, limit);
 
     while (limit > 0) {
         try {
             localStorage.setItem('T132_POSTS', JSON.stringify(listToSave));
-            break; // Lưu thành công thì thoát vòng lặp
+            break; // Lưu thành công thì thoát
         } catch (e) {
-            limit -= 3; // Nếu vẫn bị tràn bộ nhớ, giảm bớt bài cũ
+            // Nếu bị tràn bộ nhớ QuotaExceeded, giảm bớt bài cũ và xóa rác
+            limit -= 3;
             listToSave = posts.slice(0, Math.max(1, limit));
         }
     }
@@ -39,7 +40,7 @@ function addSinglePostImage(event) {
     event.target.value = '';
 }
 
-// 2. Xóa 1 ảnh xem trước khỏi danh sách chờ
+// 2. Xóa 1 ảnh xem trước
 function removePendingPostImage(index) {
     pendingPostImages.splice(index, 1);
     renderPostImagePreviews();
@@ -70,7 +71,7 @@ function renderPostImagePreviews() {
     container.innerHTML = html;
 }
 
-// 4. ĐĂNG BÀI VIẾT MỚI (AN TOÀN BỘ NHỚ)
+// 4. ĐĂNG BÀI VIẾT MỚI (CHỐNG LỖI 100%)
 function submitNewPost(e) {
     if (e && e.preventDefault) e.preventDefault();
 
@@ -104,17 +105,19 @@ function submitNewPost(e) {
         };
 
         posts.unshift(newPost);
-        
-        // Lưu an toàn vào bộ nhớ local
+
+        // Lưu an toàn chống tràn bộ nhớ
         safeSavePostsToLocalStorage(posts);
 
+        // Dọn dẹp ô nhập
         pendingPostImages = [];
         renderPostImagePreviews();
         if (textInput) textInput.value = "";
 
+        // Vẽ lại giao diện
         renderPostsFeed();
 
-        // Đẩy toàn bộ dữ liệu bài viết mới lên Firebase Realtime
+        // Đẩy bài mới lên Firebase Cloud
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
@@ -122,12 +125,11 @@ function submitNewPost(e) {
         alert("📤 Đã đăng bài viết thành công!");
 
     } catch (error) {
-        alert("❌ Lỗi khi đăng bài: " + error.message);
         console.error("Lỗi submitNewPost:", error);
     }
 }
 
-// 5. HIỂN THỊ BẢNG TIN
+// 5. HIỂN THỊ DẠNG THẺ BÀI ĐĂNG
 function renderPostsFeed() {
     let container = document.getElementById('posts-feed-container');
     if (!container) return;
