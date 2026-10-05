@@ -57,7 +57,7 @@ function switchTab(tabId) {
     if (tabId === 'tab-games') openMiniGameSection('xo');
 }
 
-/* Biểu đồ cột Trang chủ: Thống kê tổng số ngày lao động phạt (Mỗi cột một màu riêng) */
+/* Biểu đồ cột Trang chủ: Thống kê tổng số ngày lao động phạt (Mỗi cột một màu pastel riêng) */
 function renderDashboardCharts() {
     let canvasBar = document.getElementById('chartBarTasks');
     if (canvasBar && typeof Chart !== 'undefined') {
@@ -87,7 +87,7 @@ function renderDashboardCharts() {
             dataY = [0];
         }
 
-        // Danh sách bảng màu pastel sinh động cho từng cột
+        // Bảng màu sắc pastel đa dạng cho mỗi cột
         const pastelColors = [
             '#ff6b6b', '#fcc419', '#52b788', '#48cae4', 
             '#a855f7', '#ff758f', '#3b82f6', '#10b981'
@@ -119,7 +119,7 @@ function renderDashboardCharts() {
                     }
                 },
                 plugins: {
-                    legend: { display: false } // Ẩn chú thích thừa vì mỗi cột đã có màu riêng biểu thị tên học sinh ở trục X
+                    legend: { display: false }
                 }
             }
         });

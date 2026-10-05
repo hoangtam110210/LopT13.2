@@ -1,13 +1,19 @@
 /* ==========================================================================
-   MODULE PHÂN CÔNG LAO ĐỘNG, ĐIỂM DANH & GHI NHẬN LỖI VI PHẠM (KẾT NỐI BIỂU ĐỒ CỘT)
+   MODULE LAO ĐỘNG & KỶ LUẬT - BẢO MẬT PHÂN QUYỀN CHỈ LỚP PHÓ LAO ĐỘNG
    ========================================================================== */
 
+const SEMESTER_START_DATE = new Date(2026, 8, 7); // Mốc Thứ 2 Tuần 1
+
+// HÀM KIỂM TRA QUYỀN LỚP PHÓ LAO ĐỘNG / BAN CÁN SỰ
 function isLaborMonitor() {
     try {
         let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
         if (typeof isSystemAdmin === 'function' && isSystemAdmin()) return true;
+        
+        // Kiểm tra tên hoặc chức danh
         return currentUser.name === 'Hoàng Ngọc Minh Tâm' || 
                currentUser.role === 'LABOR_MONITOR' || 
+               currentUser.role === 'Lớp phó lao động' || 
                currentUser.position === 'Lớp phó lao động';
     } catch (e) {
         return false;
@@ -26,6 +32,18 @@ function getStudentNameList() {
     return [];
 }
 
+function getStudentPenaltyBalanceMap() {
+    let violations = [];
+    try { violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || []; } catch(e) {}
+
+    let map = {};
+    violations.forEach(v => {
+        if (!map[v.studentName]) map[v.studentName] = 0;
+        map[v.studentName] += (parseInt(v.penaltyDays) || 0);
+    });
+    return map;
+}
+
 const LABOR_DAYS_MAP = [
     { key: "thu2", label: "Thứ 2" },
     { key: "thu3", label: "Thứ 3" },
@@ -35,7 +53,6 @@ const LABOR_DAYS_MAP = [
     { key: "thu7", label: "Thứ 7" }
 ];
 
-// Danh sách lỗi chuẩn theo bảng quy định vi phạm
 const DISCIPLINE_RULES_CATALOG = [
     { name: "Trừ 1-3 điểm tổng kết", days: 3 },
     { name: "Trừ 4-10 điểm tổng kết", days: 6 },
@@ -61,12 +78,64 @@ const DISCIPLINE_RULES_CATALOG = [
     { name: "Chậm trễ công việc được giao", days: 12 }
 ];
 
+function getCurrentWeekIndex() {
+    let savedWeek = localStorage.getItem('T132_CURRENT_WEEK');
+    if (savedWeek) return parseInt(savedWeek);
+    
+    let now = new Date();
+    let diffTime = now - SEMESTER_START_DATE;
+    let diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    let weekIndex = Math.floor(diffDays / 7) + 1;
+    return weekIndex < 1 ? 1 : (weekIndex > 35 ? 35 : weekIndex);
+}
+
+// BẢO VỆ HÀM ĐỔI TUẦN
+function setCurrentClassWeek(newWeekNum) {
+    if (!isLaborMonitor()) {
+        alert("⚠️ Bạn không có quyền! Chỉ Lớp phó Lao động mới được thay đổi Tuần hiện tại của lớp.");
+        renderDisciplineDutyTab();
+        return;
+    }
+    let weekInt = parseInt(newWeekNum) || 1;
+    localStorage.setItem('T132_CURRENT_WEEK', weekInt);
+    alert(`⚙️ Đã thiết lập tuần hiện tại của lớp thành: TUẦN ${weekInt}`);
+    renderDisciplineDutyTab();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
+}
+
+function getWeekDateRange(weekNum) {
+    let monday = new Date(SEMESTER_START_DATE);
+    monday.setDate(SEMESTER_START_DATE.getDate() + (weekNum - 1) * 7);
+    monday.setHours(0, 0, 0, 0);
+
+    let sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+
+    return { monday, sunday };
+}
+
+function formatDateDisplay(d) {
+    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+/* --------------------------------------------------------------------------
+   RENDER TỔNG THỂ TAB LAO ĐỘNG (PHÂN BIỆT RÕ HỌC SINH VÀ LỚP PHÓ LAO ĐỘNG)
+   -------------------------------------------------------------------------- */
 function renderDisciplineDutyTab() {
     let container = document.getElementById('tab-labor');
     if (!container) return;
 
     let isLaborAdmin = isLaborMonitor();
     let studentNames = getStudentNameList();
+    let currentWeekNum = getCurrentWeekIndex();
+    let penaltyBalanceMap = getStudentPenaltyBalanceMap();
+
+    let sortedStudentsForAssign = [...studentNames].sort((a, b) => {
+        let balA = penaltyBalanceMap[a] || 0;
+        let balB = penaltyBalanceMap[b] || 0;
+        return balB - balA;
+    });
 
     let defaultSchedule = {
         "Thứ 2": [], "Thứ 3": [], "Thứ 4": [],
@@ -93,15 +162,18 @@ function renderDisciplineDutyTab() {
 
     let scheduleHtml = "";
 
-    // 1. PHÂN CÔNG LAO ĐỘNG (T2 - T7)
+    // 1. PHÂN CÔNG LAO ĐỘNG (CHỈ HỌC SINH CÓ QUYỀN MỚI THẤY FORM SỬA)
     if (isLaborAdmin) {
         let inputsHtml = LABOR_DAYS_MAP.map(d => {
             let assignedList = schedule[d.label] || [];
-            let checkboxesHtml = studentNames.map(name => {
+            let checkboxesHtml = sortedStudentsForAssign.map(name => {
                 let isChecked = assignedList.includes(name) ? 'checked' : '';
+                let bal = penaltyBalanceMap[name] || 0;
+                let badgeHtml = bal > 0 ? `<b style="color:#dc2626; font-size:9px;">🔥 Nợ ${bal} ngày</b>` : '';
+
                 return `
-                    <label style="display:inline-block; margin-right:8px; margin-bottom:4px; font-size:10px; background:#f1f5f9; padding:2px 6px; border-radius:4px; cursor:pointer;">
-                        <input type="checkbox" class="sched-checkbox-${d.key}" value="${name}" ${isChecked}> ${name}
+                    <label style="display:inline-block; margin-right:6px; margin-bottom:4px; font-size:10px; background:${bal > 0 ? '#fef2f2' : '#f1f5f9'}; padding:3px 6px; border-radius:4px; cursor:pointer; border:1px solid ${bal > 0 ? '#fca5a5' : '#cbd5e1'};">
+                        <input type="checkbox" class="sched-checkbox-${d.key}" value="${name}" ${isChecked}> ${name} ${badgeHtml}
                     </label>
                 `;
             }).join('');
@@ -109,7 +181,7 @@ function renderDisciplineDutyTab() {
             return `
                 <div style="margin-bottom:10px; border-bottom:1px dashed #cbd5e1; padding-bottom:8px;">
                     <b style="font-size:11px; color:var(--primary-color); display:block; margin-bottom:4px;">📅 ${d.label}:</b>
-                    <div style="max-height:90px; overflow-y:auto; border:1px solid #e2e8f0; padding:6px; border-radius:6px; background:#fff;">
+                    <div style="max-height:100px; overflow-y:auto; border:1px solid #e2e8f0; padding:6px; border-radius:6px; background:#fff;">
                         ${checkboxesHtml}
                     </div>
                 </div>
@@ -118,13 +190,14 @@ function renderDisciplineDutyTab() {
 
         scheduleHtml = `
             <div class="card" style="margin-bottom:12px;">
-                <h3 style="color:var(--text-color);">🧹 Lớp Phó Lao Động: Phân Công Theo Danh Sách Lớp</h3>
-                <p style="font-size:10px; color:#666; margin-bottom:6px;">Tích chọn học sinh phụ trách trực nhật cho từng ngày trong tuần:</p>
+                <h3 style="color:var(--text-color);">🧹 Lớp Phó Lao Động: Phân Công Trực Nhật</h3>
+                <p style="font-size:10px; color:#dc2626; font-weight:bold; margin-bottom:6px;">🔥 Danh sách tự động ưu tiên học sinh nợ lao động cao lên đầu:</p>
                 ${inputsHtml}
                 <button onclick="saveLaborSchedule()" class="btn btn-primary btn-block" style="margin-top:6px; font-size:11px;">💾 Lưu Bảng Phân Công</button>
             </div>
         `;
     } else {
+        // HỌC SINH THƯỜNG CHỈ THẤY BẢNG XEM LỊCH (READ-ONLY)
         let rowsHtml = LABOR_DAYS_MAP.map(d => {
             let list = schedule[d.label] || [];
             return `
@@ -145,7 +218,7 @@ function renderDisciplineDutyTab() {
         `;
     }
 
-    // 2. ĐIỂM DANH TRỰC NHẬT HÔM NAY
+    // 2. ĐIỂM DANH TRỰC NHẬT HÔM NAY (HỌC SINH THƯỜNG KHÔNG BẤM ĐƯỢC CHECKBOX)
     let todayIndex = new Date().getDay(); 
     let dayMapName = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"][todayIndex];
     let todayAssignedStudents = schedule[dayMapName] || [];
@@ -156,14 +229,20 @@ function renderDisciplineDutyTab() {
     } else {
         dutyRowsHtml = todayAssignedStudents.map((name, idx) => {
             let status = dutyStatus[name] || 'Chưa làm';
+            let currentBal = penaltyBalanceMap[name] || 0;
+
             return `
                 <tr style="border-bottom:1px solid #eee; font-size:11px;">
                     <td style="padding:6px;">${idx + 1}</td>
-                    <td style="padding:6px; font-weight:bold;">${name}</td>
+                    <td style="padding:6px; font-weight:bold;">
+                        ${name} <br><small style="color:#666; font-weight:normal;">(Nợ hiện tại: ${currentBal} ngày)</small>
+                    </td>
                     <td style="padding:6px;">
-                        <label style="cursor:pointer; color:${status === 'Đã làm' ? '#2b8a3e' : '#d90429'}; font-weight:bold;">
-                            <input type="checkbox" ${status === 'Đã làm' ? 'checked' : ''} onchange="toggleDutyCompletion('${name}', this.checked)" style="transform:scale(1.2); margin-right:4px;">
-                            ${status === 'Đã làm' ? '✅ Đã đi làm' : '❌ Chưa đi làm'}
+                        <label style="cursor:${isLaborAdmin ? 'pointer' : 'default'}; color:${status === 'Đã làm' ? '#166534' : '#d90429'}; font-weight:bold;">
+                            <input type="checkbox" ${status === 'Đã làm' ? 'checked' : ''} 
+                                   ${isLaborAdmin ? `onchange="toggleDutyCompletion('${name}', this.checked)"` : 'disabled'} 
+                                   style="transform:scale(1.2); margin-right:4px;">
+                            ${status === 'Đã làm' ? '✅ Đã đi làm (-1 ngày)' : '❌ Chưa đi làm'}
                         </label>
                     </td>
                 </tr>
@@ -174,13 +253,16 @@ function renderDisciplineDutyTab() {
     let dutyChecklistHtml = `
         <div class="card" style="margin-bottom:12px; border:2px dashed #3b82f6; background:#f8fafc;">
             <h3 style="color:var(--text-color);">✅ Điểm Danh Trực Nhật Hôm Nay (${dayMapName})</h3>
+            <p style="font-size:10px; color:${isLaborAdmin ? '#059669' : '#666'}; font-weight:bold; margin-top:2px;">
+                ${isLaborAdmin ? '💡 Lớp phó lao động tích "Đã đi làm" sẽ tự động trừ 1 ngày lao động cho bạn học.' : '🔒 Chỉ Lớp phó lao động mới có quyền điểm danh trực nhật.'}
+            </p>
             <div style="max-height:180px; overflow-y:auto; margin-top:6px;">
                 <table style="width:100%; border-collapse:collapse; background:#fff; border-radius:6px;">
                     <thead>
                         <tr style="background:#e2e8f0; font-size:11px; text-align:left;">
                             <th style="padding:6px;">STT</th>
                             <th style="padding:6px;">Học Sinh Phụ Trách</th>
-                            <th style="padding:6px;">Trạng Thái Làm Việc</th>
+                            <th style="padding:6px;">Trạng Thái Trực Nhật</th>
                         </tr>
                     </thead>
                     <tbody>${dutyRowsHtml}</tbody>
@@ -189,7 +271,60 @@ function renderDisciplineDutyTab() {
         </div>
     `;
 
-    // 3. GHI NHẬN LỖI VI PHẠM KỶ LUẬT (KẾT NỐI BIỂU ĐỒ CỘT)
+    // 3. KHO LƯU TRỮ (CHỈ LỚP PHÓ LAO ĐỘNG MỚI ĐƯỢC ĐỔI TUẦN NĂM HỌC)
+    let weekFilterOptionsHtml = "";
+    let weekSelectControlHtml = "";
+
+    for (let w = 1; w <= 35; w++) {
+        let range = getWeekDateRange(w);
+        let dateStr = `${formatDateDisplay(range.monday)} - ${formatDateDisplay(range.sunday)}`;
+        
+        let labelFilter = `Tuần ${w} (${dateStr})`;
+        if (w === currentWeekNum) labelFilter += " ⭐ (Tuần hiện tại)";
+        
+        weekFilterOptionsHtml += `<option value="${w}" ${w === currentWeekNum ? 'selected' : ''}>${labelFilter}</option>`;
+        weekSelectControlHtml += `<option value="${w}" ${w === currentWeekNum ? 'selected' : ''}>Tuần ${w}</option>`;
+    }
+    weekFilterOptionsHtml += `<option value="ALL">🌐 Tất Cả Các Tuần (1 -> 35)</option>`;
+
+    let setWeekControlHtml = isLaborAdmin ? `
+        <div style="margin-bottom:10px; padding:8px 12px; background:#e0f2fe; border:1px solid #7dd3fc; border-radius:8px; display:flex; align-items:center; justify-content:space-between; font-size:11px;">
+            <b style="color:#0369a1;">⚙️ Cài đặt Tuần hiện tại cho cả lớp:</b>
+            <select onchange="setCurrentClassWeek(this.value)" class="form-control" style="width:auto; font-size:11px; font-weight:bold; padding:2px 8px; border:1px solid #0284c7;">
+                ${weekSelectControlHtml}
+            </select>
+        </div>
+    ` : '';
+
+    let weeklySummaryHtml = `
+        <div class="card" style="margin-bottom:12px; background:#f0fdf4; border:1px solid #bbf7d0;">
+            ${setWeekControlHtml}
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <h3 style="color:#166534; margin:0;">📊 Kho Lưu Trữ Số Liệu Lao Động (Đang chọn: Tuần ${currentWeekNum})</h3>
+                <select id="weekly-filter-select" onchange="renderWeeklyReportTable()" class="form-control" style="width:auto; font-size:11px; font-weight:bold; padding:4px 8px; border:1px solid #166534;">
+                    ${weekFilterOptionsHtml}
+                </select>
+            </div>
+            <p id="weekly-date-range-text" style="font-size:10px; color:#15803d; margin-top:4px; font-weight:500;"></p>
+            
+            <div style="max-height:220px; overflow-y:auto; margin-top:8px; border:1px solid #cbd5e1; border-radius:8px; background:#fff;">
+                <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                    <thead>
+                        <tr style="background:#f1f5f9; text-align:left; border-bottom:1px solid #cbd5e1;">
+                            <th style="padding:6px;">Học Sinh</th>
+                            <th style="padding:6px; text-align:center;">Trực Nhật</th>
+                            <th style="padding:6px; text-align:center;">Số Lỗi</th>
+                            <th style="padding:6px; text-align:center;">Tổng Nợ LĐ</th>
+                            <th style="padding:6px; text-align:center;">Đánh Giá</th>
+                        </tr>
+                    </thead>
+                    <tbody id="weekly-report-tbody"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    // 4. FORM GHI NHẬN LỖI & CỘNG TRỪ THỦ CÔNG (ẨN HOÀN TOÀN ĐỐI VỚI HỌC SINH THƯỜNG)
     let logFormHtml = "";
     if (isLaborAdmin) {
         let studentOptions = studentNames.map(name => `<option value="${name}">${name}</option>`).join('');
@@ -210,37 +345,70 @@ function renderDisciplineDutyTab() {
                     <label style="font-size:11px; font-weight:bold;">Ghi chú chi tiết (Tùy chọn):</label>
                     <input type="text" id="violation-note-input" class="form-control" placeholder="VD: Tiết 2 môn Toán..." style="font-size:11px;">
                 </div>
-                <button onclick="logLaborViolation()" class="btn btn-danger btn-block" style="margin-top:8px; font-size:11px;">⚠️ Lưu Lỗi & Cập Nhật Biểu Đồ Cột</button>
+                <button onclick="logLaborViolation()" class="btn btn-danger btn-block" style="margin-top:8px; font-size:11px;">⚠️ Lưu Lỗi Mới</button>
+            </div>
+
+            <div class="card" style="margin-bottom:12px; background:#eff6ff; border:1px solid #bfdbfe;">
+                <h3 style="color:#1d4ed8;">➕ Tùy Chỉnh Cộng / Trừ Ngày Lao Động Thủ Công</h3>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
+                    <div>
+                        <label style="font-size:11px; font-weight:bold;">Chọn học sinh:</label>
+                        <select id="manual-student-select" class="form-control" style="font-size:11px;">${studentOptions}</select>
+                    </div>
+                    <div>
+                        <label style="font-size:11px; font-weight:bold;">Số ngày (+/ -):</label>
+                        <input type="number" id="manual-days-input" class="form-control" placeholder="VD: 1 hoặc -1" style="font-size:11px;" value="1">
+                    </div>
+                </div>
+                <div style="margin-top:6px;">
+                    <label style="font-size:11px; font-weight:bold;">Lý do điều chỉnh:</label>
+                    <input type="text" id="manual-reason-input" class="form-control" placeholder="VD: Thưởng đi trực nhật thay bạn, Phạt thêm..." style="font-size:11px;">
+                </div>
+                <button onclick="addManualLaborDays()" class="btn btn-primary btn-block" style="margin-top:8px; font-size:11px; background:#2563eb;">⚡ LƯU ĐIỀU CHỈNH THỦ CÔNG</button>
             </div>
         `;
     }
 
     let violationsListHtml = violations.length === 0 ? 
-        `<p style="color:#777; font-size:11px; text-align:center;">Lớp chưa có lỗi vi phạm nào.</p>` :
-        violations.map((v, idx) => `
-            <div style="background:#fff; border:1px solid var(--border-color); padding:8px 10px; border-radius:10px; margin-bottom:8px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <b style="color:#d90429;">👤 ${v.studentName}</b> - <span style="color:#333;">${v.content}</span>
-                    <div style="font-size:10px; color:#666; margin-top:2px;">📅 ${v.date} | Hình phạt: ${v.penaltyDays} ngày LĐ</div>
+        `<p style="color:#777; font-size:11px; text-align:center;">Chưa có lịch sử vi phạm hoặc trừ ngày lao động.</p>` :
+        violations.map((v, idx) => {
+            let daysNum = parseInt(v.penaltyDays) || 0;
+            let isMinus = daysNum < 0;
+
+            return `
+                <div style="background:#fff; border:1px solid ${isMinus ? '#bbf7d0' : '#fca5a5'}; padding:8px 10px; border-radius:10px; margin-bottom:8px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <b style="color:${isMinus ? '#166534' : '#d90429'};">👤 ${v.studentName}</b> - <span style="color:#333;">${v.content}</span>
+                        <div style="font-size:10px; color:#666; margin-top:2px;">📅 ${v.date} | Trạng thái: <b style="color:${isMinus ? '#166534' : '#d90429'};">${isMinus ? `${daysNum} ngày LĐ` : `+${daysNum} ngày LĐ`}</b></div>
+                    </div>
+                    ${isLaborAdmin ? `<button onclick="deleteLaborViolation(${idx})" class="btn btn-danger" style="font-size:10px; padding:2px 6px;">✕ Xoá</button>` : ''}
                 </div>
-                ${isLaborAdmin ? `<button onclick="deleteLaborViolation(${idx})" class="btn btn-danger" style="font-size:10px; padding:2px 6px;">✕ Xoá</button>` : ''}
-            </div>
-        `).join('');
+            `;
+        }).join('');
 
     container.innerHTML = `
         ${scheduleHtml}
         ${dutyChecklistHtml}
+        ${weeklySummaryHtml}
         ${logFormHtml}
         <div class="card">
-            <h3 style="color:var(--text-color);">📋 Danh Sách Lỗi Vi Phạm Đã Ghi Nhận</h3>
-            <div style="max-height:200px; overflow-y:auto; margin-top:8px;">${violationsListHtml}</div>
+            <h3 style="color:var(--text-color);">📋 Lịch Sử Vi Phạm & Trừ Ngày Lao Động</h3>
+            <div style="max-height:220px; overflow-y:auto; margin-top:8px;">${violationsListHtml}</div>
         </div>
     `;
 
-    if (typeof updateChartsData === 'function') updateChartsData();
+    renderWeeklyReportTable();
+    if (typeof renderDashboardCharts === 'function') renderDashboardCharts();
 }
 
+/* --------------------------------------------------------------------------
+   BẢO VỆ CÁC HÀM XỬ LÝ - CHẶN CẢ NẾU CỐ TÌNH GỌI LỆNH TỪ CONSOLE
+   -------------------------------------------------------------------------- */
 function saveLaborSchedule() {
+    if (!isLaborMonitor()) {
+        alert("⚠️ Bạn không có quyền! Chỉ Lớp phó Lao động mới được phân công trực nhật.");
+        return;
+    }
     let schedule = {};
     LABOR_DAYS_MAP.forEach(d => {
         let checkboxes = document.querySelectorAll(`.sched-checkbox-${d.key}:checked`);
@@ -250,16 +418,50 @@ function saveLaborSchedule() {
     localStorage.setItem('T132_LABOR_SCHEDULE', JSON.stringify(schedule));
     alert("💾 Đã lưu bảng phân công lao động thành công!");
     renderDisciplineDutyTab();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
 
 function toggleDutyCompletion(studentName, isChecked) {
+    if (!isLaborMonitor()) {
+        alert("⚠️ Bạn không có quyền! Chỉ Lớp phó Lao động mới được điểm danh trực nhật.");
+        renderDisciplineDutyTab();
+        return;
+    }
+
     let dutyStatus = JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || {};
     dutyStatus[studentName] = isChecked ? 'Đã làm' : 'Chưa làm';
     localStorage.setItem('T132_LABOR_DUTY_STATUS', JSON.stringify(dutyStatus));
-    if (typeof updateChartsData === 'function') updateChartsData();
+
+    let violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [];
+    let todayStr = new Date().toLocaleDateString('vi-VN');
+    let autoLogContent = `✅ Hoàn thành 1 buổi trực nhật (${todayStr})`;
+
+    if (isChecked) {
+        let alreadyDeducted = violations.some(v => v.studentName === studentName && v.content === autoLogContent);
+        if (!alreadyDeducted) {
+            violations.unshift({
+                studentName: studentName,
+                content: autoLogContent,
+                penaltyDays: -1,
+                date: todayStr
+            });
+            localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(violations));
+        }
+    } else {
+        violations = violations.filter(v => !(v.studentName === studentName && v.content === autoLogContent));
+        localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(violations));
+    }
+
+    renderDisciplineDutyTab();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
 
 function logLaborViolation() {
+    if (!isLaborMonitor()) {
+        alert("⚠️ Bạn không có quyền! Chỉ Lớp phó Lao động mới được ghi nhận lỗi vi phạm.");
+        return;
+    }
+
     let studentSelect = document.getElementById('violation-student-select');
     let ruleSelect = document.getElementById('violation-rule-select');
     let noteInput = document.getElementById('violation-note-input');
@@ -274,12 +476,7 @@ function logLaborViolation() {
         return;
     }
 
-    let violations = [];
-    try {
-        let saved = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS'));
-        if (Array.isArray(saved)) violations = saved;
-    } catch(e) {}
-
+    let violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [];
     violations.unshift({
         studentName: studentName,
         content: ruleName + (note ? ` (${note})` : ''),
@@ -288,50 +485,143 @@ function logLaborViolation() {
     });
 
     localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(violations));
-    alert(`⚠️ Đã ghi nhận lỗi cho học sinh "${studentName}" thành công!`);
+    alert(`⚠️ Đã ghi nhận lỗi cho học sinh "${studentName}" (+${penaltyDays} ngày LĐ)!`);
 
     if (noteInput) noteInput.value = "";
     renderDisciplineDutyTab();
-    if (typeof updateChartsData === 'function') updateChartsData();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
+}
+
+function addManualLaborDays() {
+    if (!isLaborMonitor()) {
+        alert("⚠️ Bạn không có quyền! Chỉ Lớp phó Lao động mới được cộng/trừ ngày lao động.");
+        return;
+    }
+
+    let studentSelect = document.getElementById('manual-student-select');
+    let daysInput = document.getElementById('manual-days-input');
+    let reasonInput = document.getElementById('manual-reason-input');
+
+    let studentName = studentSelect ? studentSelect.value : "";
+    let days = parseInt(daysInput ? daysInput.value : 0);
+    let reason = reasonInput ? reasonInput.value.trim() : "Điều chỉnh thủ công";
+
+    if (!studentName || isNaN(days) || days === 0) {
+        alert("⚠️ Vui lòng chọn học sinh và nhập số ngày hợp lệ (Khác 0)!");
+        return;
+    }
+
+    let violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [];
+    violations.unshift({
+        studentName: studentName,
+        content: `🛠️ ${reason}`,
+        penaltyDays: days,
+        date: new Date().toLocaleDateString('vi-VN')
+    });
+
+    localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(violations));
+    alert(`✅ Đã ${days > 0 ? 'cộng +' + days : 'trừ ' + days} ngày lao động cho học sinh "${studentName}"!`);
+
+    if (reasonInput) reasonInput.value = "";
+    renderDisciplineDutyTab();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
 
 function deleteLaborViolation(index) {
-    if (!confirm("Bạn có chắc chắn muốn xoá lỗi này?")) return;
-    let violations = [];
-    try {
-        let saved = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS'));
-        if (Array.isArray(saved)) violations = saved;
-    } catch(e) {}
+    if (!isLaborMonitor()) {
+        alert("⚠️ Bạn không có quyền! Chỉ Lớp phó Lao động mới được xoá vi phạm.");
+        return;
+    }
 
+    if (!confirm("Bạn có chắc chắn muốn xoá mục này?")) return;
+    let violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [];
     violations.splice(index, 1);
     localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(violations));
     renderDisciplineDutyTab();
-    if (typeof updateChartsData === 'function') updateChartsData();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
 
-/* ==========================================================================
-   KẾT NỐI BIỂU ĐỒ CỘT (TRỤC X: TÊN HỌC SINH VI PHẠM, TRỤC Y: SỐ LƯỢNG LỖI)
-   ========================================================================== */
-function updateChartsData() {
-    let violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [];
-    let violationCounts = {};
+/* --------------------------------------------------------------------------
+   BẢNG BÁO CÁO TỔNG HỢP THEO TUẦN (MỌI HỌC SINH ĐỀU XEM ĐƯỢC)
+   -------------------------------------------------------------------------- */
+function renderWeeklyReportTable() {
+    let tbody = document.getElementById('weekly-report-tbody');
+    let rangeTextEl = document.getElementById('weekly-date-range-text');
+    let filterSelect = document.getElementById('weekly-filter-select');
+    if (!tbody) return;
 
-    violations.forEach(v => {
-        violationCounts[v.studentName] = (violationCounts[v.studentName] || 0) + 1;
+    let filterValue = filterSelect ? filterSelect.value : getCurrentWeekIndex().toString();
+    let studentNames = getStudentNameList();
+
+    let schedule = {};
+    try { schedule = JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || {}; } catch(e) {}
+
+    let dutyStatus = {};
+    try { dutyStatus = JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || {}; } catch(e) {}
+
+    let violations = [];
+    try { violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || []; } catch(e) {}
+
+    let filteredViolations = violations;
+    if (filterValue !== 'ALL') {
+        let weekNum = parseInt(filterValue) || 1;
+        let { monday, sunday } = getWeekDateRange(weekNum);
+        if (rangeTextEl) rangeTextEl.innerText = `Khoảng thời gian Tuần ${weekNum}: Từ ${formatDateDisplay(monday)} đến ${formatDateDisplay(sunday)}`;
+
+        filteredViolations = violations.filter(v => {
+            if (!v.date) return false;
+            let parts = v.date.split('/');
+            let vDate = parts.length === 3 ? new Date(parts[2], parts[1] - 1, parts[0]) : new Date(v.date);
+            return vDate >= monday && vDate <= sunday;
+        });
+    } else {
+        if (rangeTextEl) rangeTextEl.innerText = `Lịch sử toàn bộ dữ liệu từ Tuần 1 đến Tuần 35`;
+    }
+
+    let reportData = studentNames.map(name => {
+        let isAssignedInSched = Object.values(schedule).some(list => Array.isArray(list) && list.includes(name));
+        let dutyState = isAssignedInSched ? (dutyStatus[name] || 'Chưa làm') : 'Không có ca';
+
+        let myViolations = filteredViolations.filter(v => v.studentName === name);
+        let violationCount = myViolations.filter(v => (parseInt(v.penaltyDays) || 0) > 0).length;
+        let penaltyDaysSum = myViolations.reduce((sum, v) => sum + (parseInt(v.penaltyDays) || 0), 0);
+
+        let evaluationBadge = '🟢 Tốt';
+        if (penaltyDaysSum > 0) {
+            evaluationBadge = `<span style="color:#d90429; font-weight:bold;">🔴 Đang nợ ${penaltyDaysSum} ngày LĐ</span>`;
+        } else if (dutyState === 'Chưa làm') {
+            evaluationBadge = `<span style="color:#f59e0b; font-weight:bold;">🟡 Cần nhắc nhở</span>`;
+        } else if (penaltyDaysSum < 0) {
+            evaluationBadge = `<span style="color:#166534; font-weight:bold;">⭐ Dư ${Math.abs(penaltyDaysSum)} công</span>`;
+        }
+
+        return {
+            name: name,
+            dutyState: dutyState,
+            violationCount: violationCount,
+            penaltyDaysSum: penaltyDaysSum,
+            evaluationBadge: evaluationBadge
+        };
     });
 
-    let topViolators = Object.keys(violationCounts).map(name => ({
-        name: name,
-        count: violationCounts[name]
-    })).sort((a, b) => b.count - a.count).slice(0, 8); // Top 8 học sinh vi phạm nhiều nhất
-
-    let labelsX = topViolators.map(v => v.name);
-    let dataY = topViolators.map(v => v.count);
-
-    if (window.barTasksChartInstance) {
-        window.barTasksChartInstance.data.labels = labelsX.length > 0 ? labelsX : ['Chưa có vi phạm'];
-        window.barTasksChartInstance.data.datasets[0].data = dataY.length > 0 ? dataY : [0];
-        window.barTasksChartInstance.data.datasets[0].label = 'Số lượng lỗi vi phạm kỷ luật';
-        window.barTasksChartInstance.update();
+    if (reportData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:10px; color:#888;">Chưa có dữ liệu danh sách học sinh.</td></tr>`;
+        return;
     }
+
+    tbody.innerHTML = reportData.map(r => `
+        <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:6px; font-weight:bold; color:#334155;">${r.name}</td>
+            <td style="padding:6px; text-align:center; color:${r.dutyState === 'Đã làm' ? '#166534' : (r.dutyState === 'Chưa làm' ? '#dc2626' : '#64748b')};">
+                ${r.dutyState === 'Đã làm' ? '✅ Đã làm' : (r.dutyState === 'Chưa làm' ? '❌ Chưa làm' : '-')}
+            </td>
+            <td style="padding:6px; text-align:center; font-weight:bold; color:${r.violationCount > 0 ? '#d90429' : '#166534'};">
+                ${r.violationCount} lỗi
+            </td>
+            <td style="padding:6px; text-align:center; font-weight:bold; color:${r.penaltyDaysSum > 0 ? '#d90429' : '#166534'};">
+                ${r.penaltyDaysSum > 0 ? `+${r.penaltyDaysSum} ngày` : `${r.penaltyDaysSum} ngày`}
+            </td>
+            <td style="padding:6px; text-align:center;">${r.evaluationBadge}</td>
+        </tr>
+    `).join('');
 }

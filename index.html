@@ -234,7 +234,10 @@
         <button onclick="switchTab('tab-profile')">👤 Cá nhân</button>
     </nav>
 
-    <!-- NẠP CÁC SCRIPT THEO ĐÚNG THỨ TỰ -->
+          <!-- Thư viện PeerJS để chơi Minigames Realtime -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+    <!-- Các file chức năng chính -->
     <script src="data.js"></script>
     <script src="auth.js"></script>
     <script src="posts.js"></script>
@@ -243,9 +246,12 @@
     <script src="tasks.js"></script>
     <script src="fund_score.js"></script>
     <script src="memories.js"></script>
-    <script src="games.js"></script>
     <script src="discipline_duty.js"></script>
     <script src="feedback_docs.js"></script>
+    <script src="games-p2p.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <script src="sync-cloud.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
