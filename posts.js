@@ -1,13 +1,28 @@
 /* ========================================================
-   BẢNG TIN - QUẢN LÝ BÀI ĐĂNG (CHỮ, ÁNH, VIDEO), LIKES, BÌNH LUẬN & XÓA BÀI
+   BẢNG TIN - QUẢN LÝ BÀI ĐĂNG (TỰ ĐỘNG CHỐNG TRÀN BỘ NHỚ 5MB)
    ======================================================== */
 
-// Ảnh đại diện dự phòng an toàn chống ngắt hàm
 const SAFE_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
 
-let pendingPostImages = []; // Danh sách mảng ảnh/video chờ đăng
+let pendingPostImages = []; 
 
-// 1. Đọc từng file ảnh/video đính kèm
+// Hàm lưu dữ liệu an toàn chống tràn dung lượng QuotaExceededError
+function safeSavePostsToLocalStorage(posts) {
+    let limit = 15; // Chỉ giữ tối đa 15 bài mới nhất ở bộ nhớ máy
+    let listToSave = posts.slice(0, limit);
+
+    while (limit > 0) {
+        try {
+            localStorage.setItem('T132_POSTS', JSON.stringify(listToSave));
+            break; // Lưu thành công thì thoát vòng lặp
+        } catch (e) {
+            limit -= 3; // Nếu vẫn bị tràn bộ nhớ, giảm bớt bài cũ
+            listToSave = posts.slice(0, Math.max(1, limit));
+        }
+    }
+}
+
+// 1. Đọc từng file ảnh/video
 function addSinglePostImage(event) {
     let file = event.target.files ? event.target.files[0] : null;
     if (!file) return;
@@ -55,7 +70,7 @@ function renderPostImagePreviews() {
     container.innerHTML = html;
 }
 
-// 4. ĐĂNG BÀI VIẾT MỚI (CHỐNG LỖI VĂN BẢN VÀ LỖI CÚ PHÁP)
+// 4. ĐĂNG BÀI VIẾT MỚI (AN TOÀN BỘ NHỚ)
 function submitNewPost(e) {
     if (e && e.preventDefault) e.preventDefault();
 
@@ -69,14 +84,10 @@ function submitNewPost(e) {
         }
 
         let currentUser = {};
-        try {
-            currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-        } catch(err) {}
+        try { currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {}; } catch(err) {}
 
         let posts = [];
-        try {
-            posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
-        } catch(err) {}
+        try { posts = JSON.parse(localStorage.getItem('T132_POSTS')) || []; } catch(err) {}
 
         let authorAvatar = currentUser.avatar || (typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : SAFE_AVATAR);
         let authorName = currentUser.name || "Thành viên T132";
@@ -92,19 +103,18 @@ function submitNewPost(e) {
             comments: []
         };
 
-        // Thêm bài viết mới vào đầu danh sách local
         posts.unshift(newPost);
-        localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+        
+        // Lưu an toàn vào bộ nhớ local
+        safeSavePostsToLocalStorage(posts);
 
-        // Dọn dẹp ô nhập văn bản và ảnh chờ
         pendingPostImages = [];
         renderPostImagePreviews();
         if (textInput) textInput.value = "";
 
-        // Vẽ lại giao diện Bảng tin ngay lập tức
         renderPostsFeed();
 
-        // Đẩy bài mới lên Firebase Cloud Realtime
+        // Đẩy toàn bộ dữ liệu bài viết mới lên Firebase Realtime
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
@@ -117,20 +127,16 @@ function submitNewPost(e) {
     }
 }
 
-// 5. HIỂN THỊ DẠNG THẺ BÀI ĐĂNG
+// 5. HIỂN THỊ BẢNG TIN
 function renderPostsFeed() {
     let container = document.getElementById('posts-feed-container');
     if (!container) return;
 
     let posts = [];
-    try {
-        posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
-    } catch(e) {}
+    try { posts = JSON.parse(localStorage.getItem('T132_POSTS')) || []; } catch(e) {}
 
     let currentUser = {};
-    try {
-        currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    } catch(e) {}
+    try { currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {}; } catch(e) {}
 
     let isAdmin = (typeof isSystemAdmin === 'function') ? isSystemAdmin() : true;
 
@@ -212,7 +218,7 @@ function toggleLikePost(postId) {
         } else {
             p.likes.push(currentUser.name);
         }
-        localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+        safeSavePostsToLocalStorage(posts);
         renderPostsFeed();
 
         if (typeof pushLocalDataToCloud === 'function') {
@@ -238,7 +244,7 @@ function addPostComment(postId) {
             text: text,
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
         });
-        localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+        safeSavePostsToLocalStorage(posts);
         input.value = "";
         renderPostsFeed();
 
@@ -260,7 +266,7 @@ function deletePostToTrash(postId) {
         deletedPosts.unshift(posts[idx]);
         posts.splice(idx, 1);
 
-        localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+        safeSavePostsToLocalStorage(posts);
         localStorage.setItem('T132_DELETED_POSTS', JSON.stringify(deletedPosts));
 
         renderPostsFeed();
