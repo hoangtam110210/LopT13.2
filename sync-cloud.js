@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME T132 HUB (CLOUD-FIRST - CHỐNG TRÀN BỘ NHỚ 100%)
+   MODULE ĐỒNG BỘ REALTIME T132 HUB (NHẬN DỮ LIỆU ĐẨY TRỰC TIẾP)
    ========================================================================== */
 
 const firebaseConfig = {
@@ -21,7 +21,6 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 
 let isPushingLocal = false;
 
-// Hàm lưu an toàn: Tự động dọn bớt dữ liệu cũ nếu bộ nhớ máy nhận bị tràn (QuotaExceededError)
 function safeSetItem(key, value) {
     if (value === undefined || value === null) return false;
     let jsonStr = typeof value === 'string' ? value : JSON.stringify(value);
@@ -30,7 +29,6 @@ function safeSetItem(key, value) {
         localStorage.setItem(key, jsonStr);
         return true;
     } catch (e) {
-        // Nếu bộ nhớ máy bị đầy 5MB, tự động cắt bỏ bớt các mục cũ ở cuối để lưu dữ liệu mới nhất
         if (Array.isArray(value)) {
             let truncatedList = [...value];
             while (truncatedList.length > 1) {
@@ -46,7 +44,7 @@ function safeSetItem(key, value) {
 }
 
 /* --------------------------------------------------------------------------
-   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN TỨC THÌ
+   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN
    -------------------------------------------------------------------------- */
 classDataRef.on('value', (snapshot) => {
     if (isPushingLocal) return;
@@ -79,20 +77,24 @@ classDataRef.on('value', (snapshot) => {
     let activeEl = document.activeElement;
     let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
 
-    // Cập nhật ngay giao diện màn hình khi có dữ liệu mới
     if (hasRealChange && !isEditingText) {
         refreshActiveTabUI();
     }
 });
 
 /* --------------------------------------------------------------------------
-   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY CHÍNH XÁC
+   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY (ƯU TIÊN DÙNG MẢNG ĐƯỢC TRUYỀN VÀO TRỰC TIẾP)
    -------------------------------------------------------------------------- */
-async function pushLocalDataToCloud() {
+async function pushLocalDataToCloud(customPosts) {
     isPushingLocal = true;
 
+    let postsToPush = customPosts;
+    if (!postsToPush) {
+        postsToPush = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
+    }
+
     let payload = {
-        posts: JSON.parse(localStorage.getItem('T132_POSTS')) || [],
+        posts: postsToPush,
         documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || [],
         users: JSON.parse(localStorage.getItem('T132_USERS')) || [],
         violations: JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [],
