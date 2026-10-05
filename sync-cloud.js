@@ -1,16 +1,6 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE (TỰ ĐỘNG RESET BỘ NHỚ RÁC V11)
+   MODULE ĐỒNG BỘ REALTIME T132 HUB (CLOUD-FIRST - TỰ ĐỘNG XÓA RÁC CŨ)
    ========================================================================== */
-
-const APP_VERSION = "v11_clean"; // Mã phiên bản làm sạch dữ liệu
-
-// Tự động dọn dẹp bộ nhớ cũ trên máy học sinh khi lên phiên bản mới
-if (localStorage.getItem('T132_VERSION_TAG') !== APP_VERSION) {
-    localStorage.removeItem('T132_POSTS');
-    localStorage.removeItem('T132_USERS');
-    localStorage.removeItem('T132_LABOR_VIOLATIONS');
-    localStorage.setItem('T132_VERSION_TAG', APP_VERSION);
-}
 
 const firebaseConfig = {
   apiKey: "AIzaSyD7MXRkTbqn-QqLjMSi9BkVkOlDaYsvbP8",
@@ -32,46 +22,36 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 let isPushingLocal = false;
 
 /* --------------------------------------------------------------------------
-   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN
+   1. LẮNG NGHE CLOUD & ÉP NẠP TRỰC TIẾP LÊN MÁY LOCAL (TỰ ĐỘNG XÓA BÀI CŨ)
    -------------------------------------------------------------------------- */
 classDataRef.on('value', (snapshot) => {
+    // Nếu máy này vừa thực hiện thao tác Đăng/Xóa thì tạm bỏ qua nạp ngược
     if (isPushingLocal) return;
 
     let cloudData = snapshot.val();
     if (!cloudData) return;
 
-    let hasRealChange = false;
+    // Ép bộ nhớ máy Local phải hoàn toàn giống 100% với trên Firebase Cloud
+    localStorage.setItem('T132_POSTS', JSON.stringify(cloudData.posts || []));
+    localStorage.setItem('T132_DOCUMENTS', JSON.stringify(cloudData.documents || []));
+    localStorage.setItem('T132_USERS', JSON.stringify(cloudData.users || []));
+    localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(cloudData.violations || []));
+    localStorage.setItem('T132_LABOR_SCHEDULE', JSON.stringify(cloudData.laborSchedule || {}));
+    localStorage.setItem('T132_LABOR_DUTY_STATUS', JSON.stringify(cloudData.laborDutyStatus || {}));
+    localStorage.setItem('T132_TASKS', JSON.stringify(cloudData.tasks || []));
+    localStorage.setItem('T132_CURRENT_WEEK', JSON.stringify(cloudData.currentWeek || 1));
 
-    function updateLocalIfChanged(key, cloudValue) {
-        if (cloudValue === undefined || cloudValue === null) return;
-        let currentStr = localStorage.getItem(key) || '';
-        let newStr = JSON.stringify(cloudValue);
-
-        if (currentStr !== newStr) {
-            localStorage.setItem(key, newStr);
-            hasRealChange = true;
-        }
-    }
-
-    updateLocalIfChanged('T132_POSTS', cloudData.posts || []);
-    updateLocalIfChanged('T132_DOCUMENTS', cloudData.documents || []);
-    updateLocalIfChanged('T132_USERS', cloudData.users || []);
-    updateLocalIfChanged('T132_LABOR_VIOLATIONS', cloudData.violations || []);
-    updateLocalIfChanged('T132_LABOR_SCHEDULE', cloudData.laborSchedule || {});
-    updateLocalIfChanged('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus || {});
-    updateLocalIfChanged('T132_TASKS', cloudData.tasks || []);
-    updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
-
+    // Kiểm tra nếu người dùng không gõ văn bản thì cập nhật lại giao diện ngay
     let activeEl = document.activeElement;
     let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
 
-    if (hasRealChange && !isEditingText) {
+    if (!isEditingText) {
         refreshActiveTabUI();
     }
 });
 
 /* --------------------------------------------------------------------------
-   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY CHÍNH XÁC
+   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY (CHỈ CHẠY KHI CÓ THAO TÁC RÕ RÀNG)
    -------------------------------------------------------------------------- */
 async function pushLocalDataToCloud() {
     isPushingLocal = true;
@@ -98,7 +78,7 @@ async function pushLocalDataToCloud() {
 }
 
 /* --------------------------------------------------------------------------
-   3. CẬP NHẬT GIAO DIỆN HIỆN TẠI
+   3. CẬP NHẬT GIAO DIỆN TAB ĐANG MỞ
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
     let activeTab = document.querySelector('.view-section.active');
