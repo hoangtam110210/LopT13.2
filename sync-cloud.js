@@ -1,8 +1,7 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME CHUẨN (TỰ ĐỘNG GỘP BÀI & DỮ LIỆU - KHÔNG XÓA ĐÈ)
+   MODULE ĐỒNG BỘ REALTIME CHUẨN (TỰ ĐỘNG GỘP BÀI, VI PHẠM & AVATAR USERS)
    ========================================================================== */
 
-// Thông số cấu hình Firebase từ dự án t132-hub
 const firebaseConfig = {
   apiKey: "AIzaSyD7MXRkTbqn-QqLjMSi9BkVkOlDaYsvbP8",
   authDomain: "t132-hub.firebaseapp.com",
@@ -13,7 +12,6 @@ const firebaseConfig = {
   appId: "1:247212478029:web:27b3e97fbf93208ef61604"
 };
 
-// Khởi tạo Firebase Realtime Database
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
@@ -63,51 +61,76 @@ classDataRef.on('value', (snapshot) => {
 });
 
 /* --------------------------------------------------------------------------
-   2. HÀM ĐẨY DỮ LIỆU THÔNG MINH (ĐỌC CLOUD VỀ TRƯỚC RỒI GỘP THÀNH MỘT)
+   2. HÀM ĐẨY DỮ LIỆU THÔNG MINH (GỘP BÀI, VI PHẠM VÀ AVATAR HỌC SINH)
    -------------------------------------------------------------------------- */
 async function pushLocalDataToCloud() {
     isPushingLocal = true;
 
     try {
-        // Lấy dữ liệu mới nhất từ Firebase về trước để chống xóa đè
         let snapshot = await classDataRef.once('value');
         let cloudData = snapshot.val() || {};
 
-        // A. Gộp Bài Viết (Posts)
+        // A. Gộp Bài Viết (Posts Merge)
         let localPosts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
         let cloudPosts = cloudData.posts || [];
         let mergedPostsMap = {};
-        
         [...cloudPosts, ...localPosts].forEach(post => {
             if (post && (post.id || post.time)) {
                 let key = post.id || (post.author + '_' + post.time);
                 mergedPostsMap[key] = post;
             }
         });
-        
         let finalPosts = Object.values(mergedPostsMap).sort((a, b) => (b.time || 0) - (a.time || 0));
         localStorage.setItem('T132_POSTS', JSON.stringify(finalPosts));
 
-        // B. Gộp Vi Phạm Lao Động (Violations)
+        // B. Gộp Vi Phạm Lao Động (Violations Merge)
         let localViolations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [];
         let cloudViolations = cloudData.violations || [];
         let mergedViolationsMap = {};
-        
         [...cloudViolations, ...localViolations].forEach(v => {
             if (v && (v.id || v.timestamp || v.studentName)) {
                 let key = v.id || (v.studentName + '_' + (v.timestamp || v.date));
                 mergedViolationsMap[key] = v;
             }
         });
-        
         let finalViolations = Object.values(mergedViolationsMap);
         localStorage.setItem('T132_LABOR_VIOLATIONS', JSON.stringify(finalViolations));
 
-        // C. Đóng gói payload đầy đủ gửi lên Firebase
+        // C. Gộp Hồ Sơ & Avatar Học Sinh (Users Merge - CHỐNG MẤT AVATAR)
+        let localUsers = JSON.parse(localStorage.getItem('T132_USERS')) || [];
+        let cloudUsers = cloudData.users || [];
+        let mergedUsersMap = {};
+
+        // Đưa dữ liệu Cloud vào trước
+        cloudUsers.forEach(u => { if (u && u.name) mergedUsersMap[u.name] = u; });
+        
+        // Đưa dữ liệu Local vào và ưu tiên giữ Avatar nếu đã tải lên
+        localUsers.forEach(u => {
+            if (u && u.name) {
+                if (!mergedUsersMap[u.name]) {
+                    mergedUsersMap[u.name] = u;
+                } else {
+                    let existingAvatar = mergedUsersMap[u.name].avatar;
+                    let newAvatar = u.avatar;
+                    // Giữ avatar có chuỗi ảnh dài hơn (đã cài ảnh)
+                    let bestAvatar = (newAvatar && newAvatar.length > 50) ? newAvatar : existingAvatar;
+
+                    mergedUsersMap[u.name] = {
+                        ...mergedUsersMap[u.name],
+                        ...u,
+                        avatar: bestAvatar
+                    };
+                }
+            }
+        });
+        let finalUsers = Object.values(mergedUsersMap);
+        localStorage.setItem('T132_USERS', JSON.stringify(finalUsers));
+
+        // D. Đóng gói gửi lên Firebase
         let payload = {
             posts: finalPosts,
             documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || cloudData.documents || [],
-            users: JSON.parse(localStorage.getItem('T132_USERS')) || cloudData.users || [],
+            users: finalUsers,
             violations: finalViolations,
             laborSchedule: JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || cloudData.laborSchedule || {},
             laborDutyStatus: JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || cloudData.laborDutyStatus || {},
@@ -125,7 +148,7 @@ async function pushLocalDataToCloud() {
 }
 
 /* --------------------------------------------------------------------------
-   3. CẬP NHẬT GIAO DIỆN MÀN HÌNH ĐANG MỞ
+   3. CẬP NHẬT GIAO DIỆN
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
     let activeTab = document.querySelector('.view-section.active');
