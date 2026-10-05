@@ -1,13 +1,6 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE
+   MODULE ĐỒNG BỘ REALTIME T132 HUB (CLOUD-FIRST - CHỐNG TRÀN BỘ NHỚ 100%)
    ========================================================================== */
-
-const APP_VERSION = "v12_clean";
-
-if (localStorage.getItem('T132_VERSION_TAG') !== APP_VERSION) {
-    localStorage.removeItem('T132_POSTS');
-    localStorage.setItem('T132_VERSION_TAG', APP_VERSION);
-}
 
 const firebaseConfig = {
   apiKey: "AIzaSyD7MXRkTbqn-QqLjMSi9BkVkOlDaYsvbP8",
@@ -28,8 +21,32 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 
 let isPushingLocal = false;
 
+// Hàm lưu an toàn: Tự động dọn bớt dữ liệu cũ nếu bộ nhớ máy nhận bị tràn (QuotaExceededError)
+function safeSetItem(key, value) {
+    if (value === undefined || value === null) return false;
+    let jsonStr = typeof value === 'string' ? value : JSON.stringify(value);
+
+    try {
+        localStorage.setItem(key, jsonStr);
+        return true;
+    } catch (e) {
+        // Nếu bộ nhớ máy bị đầy 5MB, tự động cắt bỏ bớt các mục cũ ở cuối để lưu dữ liệu mới nhất
+        if (Array.isArray(value)) {
+            let truncatedList = [...value];
+            while (truncatedList.length > 1) {
+                truncatedList.pop();
+                try {
+                    localStorage.setItem(key, JSON.stringify(truncatedList));
+                    return true;
+                } catch (err) {}
+            }
+        }
+        return false;
+    }
+}
+
 /* --------------------------------------------------------------------------
-   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN
+   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN TỨC THÌ
    -------------------------------------------------------------------------- */
 classDataRef.on('value', (snapshot) => {
     if (isPushingLocal) return;
@@ -39,29 +56,30 @@ classDataRef.on('value', (snapshot) => {
 
     let hasRealChange = false;
 
-    function updateLocalIfChanged(key, cloudValue) {
+    function updateLocalKey(key, cloudValue) {
         if (cloudValue === undefined || cloudValue === null) return;
         let currentStr = localStorage.getItem(key) || '';
         let newStr = JSON.stringify(cloudValue);
 
         if (currentStr !== newStr) {
-            localStorage.setItem(key, newStr);
-            hasRealChange = true;
+            let success = safeSetItem(key, cloudValue);
+            if (success) hasRealChange = true;
         }
     }
 
-    updateLocalIfChanged('T132_POSTS', cloudData.posts || []);
-    updateLocalIfChanged('T132_DOCUMENTS', cloudData.documents || []);
-    updateLocalIfChanged('T132_USERS', cloudData.users || []);
-    updateLocalIfChanged('T132_LABOR_VIOLATIONS', cloudData.violations || []);
-    updateLocalIfChanged('T132_LABOR_SCHEDULE', cloudData.laborSchedule || {});
-    updateLocalIfChanged('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus || {});
-    updateLocalIfChanged('T132_TASKS', cloudData.tasks || []);
-    updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
+    updateLocalKey('T132_POSTS', cloudData.posts || []);
+    updateLocalKey('T132_DOCUMENTS', cloudData.documents || []);
+    updateLocalKey('T132_USERS', cloudData.users || []);
+    updateLocalKey('T132_LABOR_VIOLATIONS', cloudData.violations || []);
+    updateLocalKey('T132_LABOR_SCHEDULE', cloudData.laborSchedule || {});
+    updateLocalKey('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus || {});
+    updateLocalKey('T132_TASKS', cloudData.tasks || []);
+    updateLocalKey('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
 
     let activeEl = document.activeElement;
     let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
 
+    // Cập nhật ngay giao diện màn hình khi có dữ liệu mới
     if (hasRealChange && !isEditingText) {
         refreshActiveTabUI();
     }
@@ -95,7 +113,7 @@ async function pushLocalDataToCloud() {
 }
 
 /* --------------------------------------------------------------------------
-   3. CẬP NHẬT GIAO DIỆN HIỆN TẠI
+   3. CẬP NHẬT GIAO DIỆN MÀN HÌNH ĐANG MỞ
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
     let activeTab = document.querySelector('.view-section.active');
