@@ -2,14 +2,14 @@
    BẢNG TIN - ĐỌC ĐƠN LẺ TỪNG ẢNH/VIDEO & ĐĂNG BÀI AN TOÀN
    ======================================================== */
 
-// Khai báo Avatar mặc định an toàn chống đứng hàm đăng bài
-const POST_DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
+// Ảnh đại diện dự phòng an toàn chống ngắt hàm
+const SAFE_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
 
 let pendingPostImages = []; // Danh sách mảng ảnh chờ đăng
 
-// 1. Đọc từng file một
+// 1. Đọc từng file ảnh/video
 function addSinglePostImage(event) {
-    let file = event.target.files[0];
+    let file = event.target.files ? event.target.files[0] : null;
     if (!file) return;
 
     let reader = new FileReader();
@@ -35,7 +35,7 @@ function renderPostImagePreviews() {
     let container = document.getElementById('post-images-preview-box');
     if (!container) return;
 
-    if (pendingPostImages.length === 0) {
+    if (!pendingPostImages || pendingPostImages.length === 0) {
         container.innerHTML = '';
         return;
     }
@@ -48,62 +48,90 @@ function renderPostImagePreviews() {
                     `<video src="${item.url}" style="width:100%; height:100%; object-fit:cover; border-radius:8px; border:1px solid var(--border-color);"></video>` : 
                     `<img src="${item.url}" style="width:100%; height:100%; object-fit:cover; border-radius:8px; border:1px solid var(--border-color);">`
                 }
-                <button onclick="removePendingPostImage(${idx})" style="position:absolute; top:-6px; right:-6px; background:#ff6b6b; color:#fff; border:none; border-radius:50%; width:20px; height:20px; font-size:10px; cursor:pointer; font-weight:bold; display:flex; align-items:center; justify-content:center;">✕</button>
+                <button type="button" onclick="removePendingPostImage(${idx})" style="position:absolute; top:-6px; right:-6px; background:#ff6b6b; color:#fff; border:none; border-radius:50%; width:20px; height:20px; font-size:10px; cursor:pointer; font-weight:bold; display:flex; align-items:center; justify-content:center;">✕</button>
             </div>`;
     });
     html += '</div>';
     container.innerHTML = html;
 }
 
-// 4. Đăng bài viết mới (ĐÃ SỬA LỖI ĐỨNG NÚT)
-function submitNewPost() {
-    let textInput = document.getElementById('post-text-input');
-    let text = textInput ? textInput.value.trim() : "";
+// 4. ĐĂNG BÀI VIẾT MỚI (CHỐNG LỖI 100%)
+function submitNewPost(e) {
+    if (e && e.preventDefault) e.preventDefault(); // Chặn reload trang nếu nằm trong form
 
-    if (!text && pendingPostImages.length === 0) {
-        alert("⚠️ Vui lòng nhập nội dung văn bản hoặc chọn ít nhất 1 ảnh/video!");
-        return;
+    try {
+        let textInput = document.getElementById('post-text-input');
+        let text = textInput ? textInput.value.trim() : "";
+
+        if (!text && (!pendingPostImages || pendingPostImages.length === 0)) {
+            alert("⚠️ Vui lòng nhập nội dung văn bản hoặc chọn ít nhất 1 ảnh/video!");
+            return;
+        }
+
+        let currentUser = {};
+        try {
+            currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+        } catch(err) {}
+
+        let posts = [];
+        try {
+            posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
+        } catch(err) {}
+
+        let authorAvatar = currentUser.avatar || (typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : SAFE_AVATAR);
+        let authorName = currentUser.name || "Thành viên T132";
+
+        let newPost = {
+            id: Date.now(),
+            authorName: authorName,
+            authorAvatar: authorAvatar,
+            text: text,
+            media: [...pendingPostImages],
+            time: new Date().toLocaleString('vi-VN'),
+            likes: [],
+            comments: []
+        };
+
+        // Thêm vào đầu danh sách local
+        posts.unshift(newPost);
+        localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+
+        // Dọn dẹp ô nhập liệu
+        pendingPostImages = [];
+        renderPostImagePreviews();
+        if (textInput) textInput.value = "";
+
+        // Vẽ lại bảng tin ngay lập tức
+        renderPostsFeed();
+
+        // Đẩy dữ liệu lên Cloud ngầm
+        if (typeof pushLocalDataToCloud === 'function') {
+            pushLocalDataToCloud();
+        }
+
+        alert("📤 Đã đăng bài viết thành công!");
+
+    } catch (error) {
+        alert("❌ Lỗi khi đăng bài: " + error.message);
+        console.error("Lỗi submitNewPost:", error);
     }
-
-    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
-
-    let avatarUrl = currentUser.avatar || (typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : POST_DEFAULT_AVATAR);
-
-    let newPost = {
-        id: Date.now(),
-        authorName: currentUser.name || "Thành viên T132",
-        authorAvatar: avatarUrl,
-        text: text,
-        media: [...pendingPostImages],
-        time: new Date().toLocaleString('vi-VN'),
-        likes: [],
-        comments: []
-    };
-
-    posts.unshift(newPost);
-    localStorage.setItem('T132_POSTS', JSON.stringify(posts));
-
-    // Đẩy ngay lên Firebase Cloud
-    if (typeof pushLocalDataToCloud === 'function') {
-        pushLocalDataToCloud();
-    }
-
-    alert("📤 Đã đăng bài viết thành công!");
-
-    pendingPostImages = [];
-    renderPostImagePreviews();
-    if (textInput) textInput.value = "";
-    renderPostsFeed();
 }
 
-// 5. Hiển thị Bảng tin
+// 5. HIỂN THỊ BẢNG TIN
 function renderPostsFeed() {
     let container = document.getElementById('posts-feed-container');
     if (!container) return;
 
-    let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
-    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+    let posts = [];
+    try {
+        posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
+    } catch(e) {}
+
+    let currentUser = {};
+    try {
+        currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+    } catch(e) {}
+
     let isAdmin = (typeof isSystemAdmin === 'function') ? isSystemAdmin() : true;
 
     if (posts.length === 0) {
@@ -114,7 +142,7 @@ function renderPostsFeed() {
     let html = "";
     posts.forEach(p => {
         let isLiked = (p.likes || []).includes(currentUser.name);
-        let authorImg = p.authorAvatar || (typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : POST_DEFAULT_AVATAR);
+        let avatarSrc = p.authorAvatar || SAFE_AVATAR;
 
         let mediaHtml = (p.media || []).map(m => {
             if (m.type === 'video') {
@@ -135,14 +163,14 @@ function renderPostsFeed() {
             <div class="card" style="margin-bottom:12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <img src="${authorImg}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
+                        <img src="${avatarSrc}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
                         <div>
                             <b style="font-size:13px; color:var(--text-color);">${p.authorName}</b>
                             <small style="display:block; color:#888; font-size:10px;">${p.time}</small>
                         </div>
                     </div>
                     ${(isAdmin || p.authorName === currentUser.name) ? `
-                        <button onclick="deletePostToTrash(${p.id})" class="btn btn-danger" style="font-size:10px; padding:2px 6px;">🗑️ Xoá bài</button>
+                        <button type="button" onclick="deletePostToTrash(${p.id})" class="btn btn-danger" style="font-size:10px; padding:2px 6px;">🗑️ Xoá bài</button>
                     ` : ''}
                 </div>
 
@@ -150,7 +178,7 @@ function renderPostsFeed() {
                 <div style="margin-top:6px;">${mediaHtml}</div>
 
                 <div style="display:flex; justify-content:space-between; align-items:center; border-top:1px dashed #eee; border-bottom:1px dashed #eee; padding:6px 0; margin-top:10px;">
-                    <button onclick="toggleLikePost(${p.id})" class="btn" style="background:${isLiked ? '#ffe3e3' : '#f0f0f0'}; color:${isLiked ? '#e03131' : '#555'}; font-size:11px; padding:4px 10px;">
+                    <button type="button" onclick="toggleLikePost(${p.id})" class="btn" style="background:${isLiked ? '#ffe3e3' : '#f0f0f0'}; color:${isLiked ? '#e03131' : '#555'}; font-size:11px; padding:4px 10px;">
                         ${isLiked ? '❤️ Đã thích' : '🤍 Thích'} (${(p.likes || []).length})
                     </button>
                     <small style="color:#777; font-size:11px;">💬 ${(p.comments || []).length} bình luận</small>
@@ -160,7 +188,7 @@ function renderPostsFeed() {
                     ${commentsHtml}
                     <div style="display:flex; gap:4px; margin-top:6px;">
                         <input type="text" id="comment-input-${p.id}" class="form-control" placeholder="Viết bình luận..." style="font-size:11px; margin:0;">
-                        <button onclick="addPostComment(${p.id})" class="btn btn-primary" style="font-size:11px; padding:4px 8px;">Gửi</button>
+                        <button type="button" onclick="addPostComment(${p.id})" class="btn btn-primary" style="font-size:11px; padding:4px 8px;">Gửi</button>
                     </div>
                 </div>
             </div>
@@ -170,7 +198,7 @@ function renderPostsFeed() {
     container.innerHTML = html;
 }
 
-// 6. Thích bài viết
+// 6. THÍCH BÀI VIẾT
 function toggleLikePost(postId) {
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
@@ -185,16 +213,15 @@ function toggleLikePost(postId) {
             p.likes.push(currentUser.name);
         }
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+        renderPostsFeed();
 
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
-
-        renderPostsFeed();
     }
 }
 
-// 7. Thêm bình luận
+// 7. THÊM BÌNH LUẬN
 function addPostComment(postId) {
     let input = document.getElementById(`comment-input-${postId}`);
     let text = input ? input.value.trim() : "";
@@ -207,22 +234,21 @@ function addPostComment(postId) {
     if (p) {
         if (!p.comments) p.comments = [];
         p.comments.push({
-            authorName: currentUser.name,
+            authorName: currentUser.name || "Thành viên",
             text: text,
             time: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
         });
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
+        input.value = "";
+        renderPostsFeed();
 
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
-
-        input.value = "";
-        renderPostsFeed();
     }
 }
 
-// 8. Xoá bài viết
+// 8. XÓA BÀI VIẾT
 function deletePostToTrash(postId) {
     if (!confirm("Bạn có chắc muốn xoá bài viết này?")) return;
 
@@ -237,7 +263,16 @@ function deletePostToTrash(postId) {
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
         localStorage.setItem('T132_DELETED_POSTS', JSON.stringify(deletedPosts));
 
+        renderPostsFeed();
+
         if (typeof pushLocalDataToCloud === 'function') {
+            pushLocalDataToCloud();
+        }
+
+        alert("🗑️ Bài viết đã được chuyển vào Kho bài đã xoá!");
+    }
+}
+alDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
 
