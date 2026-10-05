@@ -8,29 +8,31 @@ const DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/20
 document.addEventListener("DOMContentLoaded", () => {
     applySavedTheme();
     startApp();
+    setupProfileSaveInterceptor(); // Tự động bắt sự kiện bấm Lưu ở Trang cá nhân
 });
 
 /* --------------------------------------------------------------------------
    1. KHỞI CHẠY ỨNG DỤNG & TỰ ĐỘNG PHỤC HỒI DANH SÁCH LỚP 35 NGƯỜI
    -------------------------------------------------------------------------- */
 function startApp() {
-    // Kiểm tra nếu danh sách bị rỗng hoặc bị thiếu (dưới 10 người), tự động khôi phục lại đủ 35 học sinh
+    // 1. Kiểm tra nếu danh sách bị rỗng/thiếu (< 10 người), tự nạp lại 35 học sinh
     let currentUsers = [];
     try {
         currentUsers = JSON.parse(localStorage.getItem('T132_USERS')) || [];
     } catch(e) {}
 
     if (currentUsers.length < 10 && typeof initDefaultData === 'function') {
-        initDefaultData(); // Tự nạp lại 35 học sinh mặc định
+        initDefaultData();
         if (typeof pushLocalDataToCloud === 'function') {
-            pushLocalDataToCloud(); // Đẩy ngay lên Firebase để tất cả các máy khác cùng nhận đủ 35 bạn
+            pushLocalDataToCloud();
         }
     }
 
+    // 2. Cập nhật giao diện Header & Đồng bộ Avatar cá nhân sang T132_USERS
     updateHeaderUserInfo();
-    autoSyncAvatarToClassList(); // Khớp và nạp Avatar cá nhân vào danh sách lớp
+    autoSyncAvatarToClassList();
 
-    // Khởi tạo các Sub-module
+    // 3. Khởi tạo các Sub-module
     if (typeof renderAdminPanel === 'function') renderAdminPanel();
     if (typeof renderRandomModule === 'function') renderRandomModule();
     if (typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
@@ -63,7 +65,9 @@ function updateHeaderUserInfo() {
     if (avatarEl) avatarEl.src = user.avatar || DEFAULT_AVATAR;
 }
 
-// TỰ ĐỘNG KHỚP VÀ ĐỒNG BỘ AVATAR CÁ NHÂN VÀO DANH SÁCH LỚP T132_USERS
+/* --------------------------------------------------------------------------
+   2. TỰ ĐỘNG CẬP NHẬT AVATAR TỪ TRANG CÁ NHÂN VÀO DANH SÁCH LỚP (T132_USERS)
+   -------------------------------------------------------------------------- */
 function autoSyncAvatarToClassList() {
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
     if (!currentUser.name || !currentUser.avatar) return;
@@ -74,6 +78,7 @@ function autoSyncAvatarToClassList() {
     let isUpdated = false;
 
     users = users.map(u => {
+        if (!u || !u.name) return u;
         let isMatch = u.name === currentUser.name ||
                       (currentUser.name && u.name && currentUser.name.includes(u.name)) ||
                       (currentUser.name && u.name && u.name.includes(currentUser.name));
@@ -93,14 +98,46 @@ function autoSyncAvatarToClassList() {
 
     if (isUpdated) {
         localStorage.setItem('T132_USERS', JSON.stringify(users));
+        // Đẩy danh sách đã có Avatar Tâm lên Firebase Realtime
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
     }
 }
 
+// Lắng nghe sự kiện khi người dùng bấm nút Lưu trong Trang cá nhân
+function setupProfileSaveInterceptor() {
+    document.addEventListener('click', (e) => {
+        let isProfileTab = e.target.closest('#tab-profile');
+        let isSaveBtn = e.target.closest('button') || e.target.closest('input[type="submit"]');
+
+        if (isProfileTab && isSaveBtn) {
+            setTimeout(() => {
+                updateHeaderUserInfo();
+                autoSyncAvatarToClassList();
+                if (typeof renderRandomModule === 'function') renderRandomModule();
+            }, 300);
+        }
+    });
+}
+
+// Hàm hỗ trợ gọi trực tiếp từ giao diện trang cá nhân (nếu có)
+function saveUserProfile(newAvatar, newNickname) {
+    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
+    
+    if (newAvatar) currentUser.avatar = newAvatar;
+    if (newNickname !== undefined) currentUser.nickname = newNickname;
+    
+    localStorage.setItem('T132_CURRENT_USER', JSON.stringify(currentUser));
+    updateHeaderUserInfo();
+    autoSyncAvatarToClassList();
+
+    if (typeof renderUserProfile === 'function') renderUserProfile();
+    if (typeof renderRandomModule === 'function') renderRandomModule();
+}
+
 /* --------------------------------------------------------------------------
-   2. XỬ LÝ CHUYỂN TAB MƯỢT MÀ & VẼ LẠI GIAO DIỆN
+   3. XỬ LÝ CHUYỂN TAB MƯỢT MÀ & VẼ LẠI GIAO DIỆN
    -------------------------------------------------------------------------- */
 function switchTab(tabId) {
     document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
@@ -114,7 +151,6 @@ function switchTab(tabId) {
         if (btn) btn.classList.add('active');
     }
 
-    // Trigger vẽ lại UI tương ứng theo tab
     if (tabId === 'tab-home') renderDashboardCharts();
     if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
     if (tabId === 'tab-posts' && typeof renderPostsFeed === 'function') renderPostsFeed();
@@ -127,7 +163,7 @@ function switchTab(tabId) {
 }
 
 /* --------------------------------------------------------------------------
-   3. BIỂU ĐỒ TRANG CHỦ: THỐNG KÊ NGÀY LAO ĐỘNG PHẠT
+   4. BIỂU ĐỒ TRANG CHỦ: THỐNG KÊ NGÀY LAO ĐỘNG PHẠT
    -------------------------------------------------------------------------- */
 function renderDashboardCharts() {
     let canvasBar = document.getElementById('chartBarTasks');
@@ -203,7 +239,7 @@ function renderDashboardCharts() {
 }
 
 /* --------------------------------------------------------------------------
-   4. CÀI ĐẶT GIAO DIỆN / THEME
+   5. CÀI ĐẶT GIAO DIỆN / THEME
    -------------------------------------------------------------------------- */
 function changeUserTheme(themeName) {
     document.body.className = '';
@@ -225,23 +261,5 @@ function applySavedTheme() {
     if (currentUser.theme && currentUser.theme !== 'default') {
         document.body.className = '';
         document.body.classList.add(`theme-${currentUser.theme}`);
-    }
-}
-
-/* --------------------------------------------------------------------------
-   5. CẬP NHẬT HỒ SƠ TỪ TAB CÁ NHÂN
-   -------------------------------------------------------------------------- */
-function updateUserProfileData(newAvatar, newNickname) {
-    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    
-    if (newAvatar) currentUser.avatar = newAvatar;
-    if (newNickname !== undefined) currentUser.nickname = newNickname;
-    
-    localStorage.setItem('T132_CURRENT_USER', JSON.stringify(currentUser));
-    updateHeaderUserInfo();
-    autoSyncAvatarToClassList();
-
-    if (typeof renderUserProfile === 'function') {
-        renderUserProfile();
     }
 }
