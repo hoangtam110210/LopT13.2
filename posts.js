@@ -54,7 +54,7 @@ function renderPostImagePreviews() {
     container.innerHTML = html;
 }
 
-// 4. Đăng bài viết (TỰ ĐỘNG BẮN LÊN FIREBASE)
+// 4. Đăng bài viết (TỰ ĐỘNG BẮN LÊN CLOUD)
 function submitNewPost() {
     let textInput = document.getElementById('post-text-input');
     let text = textInput ? textInput.value.trim() : "";
@@ -81,7 +81,7 @@ function submitNewPost() {
     posts.unshift(newPost);
     localStorage.setItem('T132_POSTS', JSON.stringify(posts));
 
-    // ĐẨY BÀI MỚI LÊN FIREBASE
+    // Đẩy bài mới ngay lập tức lên Firebase
     if (typeof pushLocalDataToCloud === 'function') {
         pushLocalDataToCloud();
     }
@@ -166,7 +166,7 @@ function renderPostsFeed() {
     container.innerHTML = html;
 }
 
-// 6. Thích bài viết (TỰ ĐỘNG BẮN LÊN FIREBASE)
+// 6. Thích bài viết (TỰ ĐỘNG BẮN LÊN CLOUD)
 function toggleLikePost(postId) {
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
@@ -190,7 +190,7 @@ function toggleLikePost(postId) {
     }
 }
 
-// 7. Thêm bình luận (TỰ ĐỘNG BẮN LÊN FIREBASE)
+// 7. Bình luận bài viết (TỰ ĐỘNG BẮN LÊN CLOUD)
 function addPostComment(postId) {
     let input = document.getElementById(`comment-input-${postId}`);
     let text = input ? input.value.trim() : "";
@@ -218,7 +218,7 @@ function addPostComment(postId) {
     }
 }
 
-// 8. XÓA BÀI VIẾT (ĐỒNG BỘ TRỰC TIẾP LÊN FIREBASE MẤT VĨNH VIỄN)
+// 8. XÓA BÀI VIẾT (TỰ ĐỘNG BẮN XÓA LÊN CLOUD)
 function deletePostToTrash(postId) {
     if (!confirm("Bạn có chắc muốn xoá bài viết này?")) return;
 
@@ -230,17 +230,19 @@ function deletePostToTrash(postId) {
         deletedPosts.unshift(posts[idx]);
         posts.splice(idx, 1);
 
-        // Lưu danh sách bài đã xoá và danh sách bài còn lại
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
         localStorage.setItem('T132_DELETED_POSTS', JSON.stringify(deletedPosts));
 
-        // BẮN NGAY LÊN FIREBASE ĐỂ TẤT CẢ CÁC MÁY KHÁC ĐỀU BỊ XÓA BÀI NÀY
+        // Đẩy ngay danh sách bài viết đã xóa lên Firebase Realtime
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
 
         alert("🗑️ Bài viết đã được chuyển vào Kho bài đã xoá!");
         renderPostsFeed();
+    }
+}
+d();
     }
 }
 
