@@ -1,25 +1,26 @@
 /* ========================================================
-   BẢNG TIN - ĐỌC ĐƠN LẺ TỪNG ẢNH/VIDEO (Y HỆT AVATAR)
+   BẢNG TIN - ĐỌC ĐƠN LẺ TỪNG ẢNH/VIDEO & ĐĂNG BÀI AN TOÀN
    ======================================================== */
+
+// Khai báo Avatar mặc định an toàn chống đứng hàm đăng bài
+const POST_DEFAULT_AVATAR = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%2388c999'/><text x='50%' y='55%' dominant-baseline='middle' text-anchor='middle' font-size='40'>🍀</text></svg>";
 
 let pendingPostImages = []; // Danh sách mảng ảnh chờ đăng
 
-// 1. Đọc từng file một giống hệt Avatar
+// 1. Đọc từng file một
 function addSinglePostImage(event) {
-    let file = event.target.files[0]; // Lấy đúng 1 file duy nhất vừa chọn
+    let file = event.target.files[0];
     if (!file) return;
 
     let reader = new FileReader();
     reader.onload = function(e) {
         pendingPostImages.push({
             type: file.type.startsWith('video') ? 'video' : 'image',
-            url: e.target.result // Luồng Base64 y hệt Avatar
+            url: e.target.result
         });
         renderPostImagePreviews();
     };
     reader.readAsDataURL(file);
-
-    // Reset value để có thể bấm chọn tiếp ảnh khác ngay lập tức
     event.target.value = '';
 }
 
@@ -29,7 +30,7 @@ function removePendingPostImage(index) {
     renderPostImagePreviews();
 }
 
-// 3. Hiển thị danh sách ảnh/video đã chọn từng cái
+// 3. Hiển thị danh sách ảnh/video đã chọn
 function renderPostImagePreviews() {
     let container = document.getElementById('post-images-preview-box');
     if (!container) return;
@@ -54,7 +55,7 @@ function renderPostImagePreviews() {
     container.innerHTML = html;
 }
 
-// 4. Đăng bài viết (TỰ ĐỘNG BẮN LÊN CLOUD)
+// 4. Đăng bài viết mới (ĐÃ SỬA LỖI ĐỨNG NÚT)
 function submitNewPost() {
     let textInput = document.getElementById('post-text-input');
     let text = textInput ? textInput.value.trim() : "";
@@ -67,10 +68,12 @@ function submitNewPost() {
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
 
+    let avatarUrl = currentUser.avatar || (typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : POST_DEFAULT_AVATAR);
+
     let newPost = {
         id: Date.now(),
-        authorName: currentUser.name,
-        authorAvatar: currentUser.avatar || DEFAULT_AVATAR,
+        authorName: currentUser.name || "Thành viên T132",
+        authorAvatar: avatarUrl,
         text: text,
         media: [...pendingPostImages],
         time: new Date().toLocaleString('vi-VN'),
@@ -81,12 +84,12 @@ function submitNewPost() {
     posts.unshift(newPost);
     localStorage.setItem('T132_POSTS', JSON.stringify(posts));
 
-    // Đẩy bài mới ngay lập tức lên Firebase
+    // Đẩy ngay lên Firebase Cloud
     if (typeof pushLocalDataToCloud === 'function') {
         pushLocalDataToCloud();
     }
 
-    alert("📤 Đã đăng bài viết lên Bảng Tin thành công!");
+    alert("📤 Đã đăng bài viết thành công!");
 
     pendingPostImages = [];
     renderPostImagePreviews();
@@ -111,6 +114,7 @@ function renderPostsFeed() {
     let html = "";
     posts.forEach(p => {
         let isLiked = (p.likes || []).includes(currentUser.name);
+        let authorImg = p.authorAvatar || (typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : POST_DEFAULT_AVATAR);
 
         let mediaHtml = (p.media || []).map(m => {
             if (m.type === 'video') {
@@ -131,7 +135,7 @@ function renderPostsFeed() {
             <div class="card" style="margin-bottom:12px;">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <img src="${p.authorAvatar || DEFAULT_AVATAR}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
+                        <img src="${authorImg}" style="width:36px; height:36px; border-radius:50%; object-fit:cover;">
                         <div>
                             <b style="font-size:13px; color:var(--text-color);">${p.authorName}</b>
                             <small style="display:block; color:#888; font-size:10px;">${p.time}</small>
@@ -166,7 +170,7 @@ function renderPostsFeed() {
     container.innerHTML = html;
 }
 
-// 6. Thích bài viết (TỰ ĐỘNG BẮN LÊN CLOUD)
+// 6. Thích bài viết
 function toggleLikePost(postId) {
     let posts = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
     let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
@@ -190,7 +194,7 @@ function toggleLikePost(postId) {
     }
 }
 
-// 7. Bình luận bài viết (TỰ ĐỘNG BẮN LÊN CLOUD)
+// 7. Thêm bình luận
 function addPostComment(postId) {
     let input = document.getElementById(`comment-input-${postId}`);
     let text = input ? input.value.trim() : "";
@@ -218,7 +222,7 @@ function addPostComment(postId) {
     }
 }
 
-// 8. XÓA BÀI VIẾT (TỰ ĐỘNG BẮN XÓA LÊN CLOUD)
+// 8. Xoá bài viết
 function deletePostToTrash(postId) {
     if (!confirm("Bạn có chắc muốn xoá bài viết này?")) return;
 
@@ -233,7 +237,6 @@ function deletePostToTrash(postId) {
         localStorage.setItem('T132_POSTS', JSON.stringify(posts));
         localStorage.setItem('T132_DELETED_POSTS', JSON.stringify(deletedPosts));
 
-        // Đẩy ngay danh sách bài viết đã xóa lên Firebase Realtime
         if (typeof pushLocalDataToCloud === 'function') {
             pushLocalDataToCloud();
         }
@@ -242,11 +245,7 @@ function deletePostToTrash(postId) {
         renderPostsFeed();
     }
 }
-d();
-    }
-}
-
-/* ==========================================================================
+=========================
    MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE
    ========================================================================== */
 
