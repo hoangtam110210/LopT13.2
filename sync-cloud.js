@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME CHUẨN FIREBASE (ĐỒNG BỘ TỨC THÌ & XÓA BÀI CHUẨN)
+   MODULE ĐỒNG BỘ REALTIME TỐI ƯU CỰC KỲ MƯỢT MÀ (T132 HUB)
    ========================================================================== */
 
 const firebaseConfig = {
@@ -22,13 +22,13 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 let isPushingLocal = false;
 
 /* --------------------------------------------------------------------------
-   1. LẮNG NGHE SỰ THAY ĐỔI REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN (< 0.2 GIÂY)
+   1. LẮNG NGHE LÊN ĐÁM MÂY TỰ ĐỘNG CẬP NHẬT GIAO DIỆN (< 0.2 GIÂY)
    -------------------------------------------------------------------------- */
 classDataRef.on('value', (snapshot) => {
+    if (isPushingLocal) return; // Khóa cập nhật ngược khi máy đang đẩy bài
+
     let cloudData = snapshot.val();
     if (!cloudData) return;
-
-    if (isPushingLocal) return;
 
     let hasRealChange = false;
 
@@ -52,6 +52,7 @@ classDataRef.on('value', (snapshot) => {
     updateLocalIfChanged('T132_TASKS', cloudData.tasks || []);
     updateLocalIfChanged('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
 
+    // Không vẽ lại nếu học sinh đang gõ văn bản
     let activeEl = document.activeElement;
     let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
 
@@ -61,7 +62,7 @@ classDataRef.on('value', (snapshot) => {
 });
 
 /* --------------------------------------------------------------------------
-   2. ĐẨY DỮ LIỆU THỰC TẾ LÊN ĐÁM MÂY (ĐẢM BẢO XÓA/THÊM BÀI CHUẨN XÁC)
+   2. HÀM ĐẨY DỮ LIỆU AN TOÀN (CHỈ CHẠY KHI ĐƯỢC GỌI TRỰC TIẾP)
    -------------------------------------------------------------------------- */
 async function pushLocalDataToCloud() {
     isPushingLocal = true;
@@ -83,12 +84,13 @@ async function pushLocalDataToCloud() {
     } catch (e) {
         console.error("Lỗi đồng bộ Realtime:", e);
     } finally {
-        setTimeout(() => { isPushingLocal = false; }, 300);
+        // Giữ khóa trong 500ms để Firebase xử lý xong hoàn toàn
+        setTimeout(() => { isPushingLocal = false; }, 500);
     }
 }
 
 /* --------------------------------------------------------------------------
-   3. CẬP NHẬT GIAO DIỆN MÀN HÌNH ĐANG MỞ
+   3. TỰ ĐỘNG CẬP NHẬT TAB ĐANG MỞ
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
     let activeTab = document.querySelector('.view-section.active');
@@ -104,13 +106,5 @@ function refreshActiveTabUI() {
     if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
     if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
     if (tabId === 'tab-home' && typeof renderDashboardCharts === 'function') renderDashboardCharts();
+    if (tabId === 'tab-profile' && typeof renderUserProfile === 'function') renderUserProfile();
 }
-
-window.addEventListener('load', () => {
-    document.addEventListener('click', (e) => {
-        let isActionButton = e.target.closest('button') || e.target.closest('input[type="checkbox"]') || e.target.closest('select');
-        if (isActionButton) {
-            setTimeout(pushLocalDataToCloud, 250);
-        }
-    });
-});
