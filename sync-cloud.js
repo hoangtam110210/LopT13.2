@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME T132 HUB - CHỐNG GHI ĐÈ KỶ NIỆM TRIỆT ĐỂ
+   MODULE ĐỒNG BỘ REALTIME T132 HUB - TỰ ĐỘNG KHÔI PHỤC & BẢO VỆ KỶ NIỆM
    ========================================================================== */
 
 const firebaseConfig = {
@@ -21,7 +21,7 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 
 let isPushingLocal = false;
 
-// 1. LẮNG NGHE TOÀN BỘ DỮ LIỆU CHUNG (Trừ Kỷ niệm)
+// 1. LẮNG NGHE DỮ LIỆU CHUNG (Trừ Kỷ niệm)
 classDataRef.on('value', (snapshot) => {
     if (isPushingLocal) return;
 
@@ -48,27 +48,49 @@ classDataRef.on('value', (snapshot) => {
     refreshActiveTabUI();
 });
 
-// 2. LẮNG NGHE RIÊNG NHÁNH KỶ NIỆM (Tự động gộp tất cả Album từ mọi tài khoản)
+// 2. LẮNG NGHE RIÊNG KỶ NIỆM (CÓ TỰ ĐỘNG KHÔI PHỤC DỮ LIỆU)
 classDataRef.child('memories').on('value', (snapshot) => {
-    let memoriesObj = snapshot.val() || {};
+    let memoriesObj = snapshot.val();
     let memoriesArr = [];
 
-    // Chuyển Object từ Firebase thành Array
-    if (Array.isArray(memoriesObj)) {
-        memoriesArr = memoriesObj.filter(item => item !== null && item !== undefined);
-    } else if (typeof memoriesObj === 'object') {
-        memoriesArr = Object.values(memoriesObj);
+    if (memoriesObj) {
+        if (Array.isArray(memoriesObj)) {
+            memoriesArr = memoriesObj.filter(item => item !== null && item !== undefined);
+        } else if (typeof memoriesObj === 'object') {
+            memoriesArr = Object.values(memoriesObj);
+        }
+    }
+
+    // Lấy dữ liệu sao lưu cũ trên máy (nếu có)
+    let localAlbums = [];
+    try {
+        localAlbums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || JSON.parse(localStorage.getItem('T132_MEMORIES_BACKUP')) || [];
+    } catch (e) {}
+
+    // CƠ CHẾ TỰ KHÔI PHỤC: Nếu Cloud bị rỗng mà trên máy còn dữ liệu -> Tự đẩy khôi phục lại Cloud
+    if (memoriesArr.length === 0 && localAlbums.length > 0) {
+        console.warn("⚠️ Cloud bị trống Album! Đang tự động khôi phục dữ liệu từ bản sao lưu...");
+        localAlbums.forEach(album => {
+            if (album && album.id) {
+                classDataRef.child('memories').child(album.id).set(album);
+            }
+        });
+        return;
     }
 
     // Sắp xếp Album mới nhất lên đầu
     memoriesArr.sort((a, b) => (b.id || 0) - (a.id || 0));
 
-    window['T132_MEMORIES_TEMP'] = memoriesArr;
-    try {
-        localStorage.setItem('T132_MEMORIES', JSON.stringify(memoriesArr));
-    } catch (e) {}
+    // Lưu vào bộ nhớ chính & Bản sao lưu dự phòng
+    if (memoriesArr.length > 0) {
+        window['T132_MEMORIES_TEMP'] = memoriesArr;
+        try {
+            localStorage.setItem('T132_MEMORIES', JSON.stringify(memoriesArr));
+            localStorage.setItem('T132_MEMORIES_BACKUP', JSON.stringify(memoriesArr));
+        } catch (e) {}
+    }
 
-    // Vẽ lại giao diện Tab Kỷ niệm ngay lập tức
+    // Cập nhật giao diện màn hình Kỷ niệm
     let activeTab = document.querySelector('.view-section.active');
     if (activeTab && activeTab.id === 'tab-memories') {
         if (typeof renderMemoriesTab === 'function') renderMemoriesTab();
@@ -76,12 +98,12 @@ classDataRef.child('memories').on('value', (snapshot) => {
     }
 });
 
-// 3. HÀM CẬP NHẬT TỪNG ALBUM RIÊNG LÊN CLOUD (CHỐNG MẤT DỮ LIỆU)
+// 3. LƯU HOẶC XÓA TỪNG ALBUM RIÊNG LÊN CLOUD
 async function saveAlbumToCloudNode(albumObj) {
     if (!albumObj || !albumObj.id) return;
     try {
         await classDataRef.child('memories').child(albumObj.id).set(albumObj);
-        console.log(`✅ [Cloud] Đã lưu Album "${albumObj.title}" lên Firebase!`);
+        console.log(`✅ [Cloud] Đã lưu Album "${albumObj.title}"!`);
     } catch (err) {
         alert("❌ Lỗi đồng bộ Album: " + err.message);
     }
@@ -91,13 +113,13 @@ async function removeAlbumFromCloudNode(albumId) {
     if (!albumId) return;
     try {
         await classDataRef.child('memories').child(albumId).remove();
-        console.log(`🗑️ [Cloud] Đã xóa Album ID ${albumId} trên Firebase!`);
+        console.log(`🗑️ [Cloud] Đã xóa Album ID ${albumId}`);
     } catch (err) {
         alert("❌ Lỗi xóa Album: " + err.message);
     }
 }
 
-// 4. ĐẨY DỮ LIỆU CÁC TÍNH NĂNG KHÁC (Không chạm vào nhánh memories)
+// 4. ĐẨY DỮ LIỆU CHUNG
 async function pushLocalDataToCloud() {
     if (isPushingLocal) return;
     isPushingLocal = true;
