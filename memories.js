@@ -1,10 +1,11 @@
 /* ==========================================================================
-   MODULE ALBUM KỶ NIỆM - TẢI ẢNH NÉT HD & ĐỒNG BỘ NODE ĐỘC LẬP CHỐNG MẤT
+   MODULE ALBUM KỶ NIỆM - MỞ QUYỀN ĐĂNG CHO TOÀN BỘ THÀNH VIÊN LỚP
    ========================================================================== */
 
 let pendingAlbumImages = [];
 let currentOpeningAlbumId = null;
 
+// Hàm xử lý ảnh chất lượng cao (Full HD 1920px)
 function processHighQualityImage(file, callback) {
     if (!file) { callback(""); return; }
 
@@ -81,7 +82,23 @@ function renderMemoriesTab() {
     let isBCS = isBCSMemberSafe();
     let defaultAvatar = typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : '';
 
-    let html = albums.map(a => `
+    // Khung tạo Album mở công khai cho TẤT CẢ học sinh/Thành viên
+    let createFormHtml = `
+        <div class="card" style="margin-bottom:16px; border:2px dashed #10b981; background:#f0fdf4;">
+            <h3 style="margin-top:0; color:#047857; font-size:14px;">➕ Tạo Album Kỷ Niệm Mới (Tất cả thành viên)</h3>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                <input type="text" id="album-title-input" class="form-control" placeholder="Nhập tên Album kỷ niệm..." style="font-size:12px;">
+                <input type="date" id="album-date-input" class="form-control" style="font-size:12px;">
+                
+                <label style="font-size:11px; font-weight:bold; color:#555; margin-bottom:-4px;">Chọn ảnh bìa Album (Không bắt buộc):</label>
+                <input type="file" id="album-cover-file" accept="image/*" class="form-control" style="font-size:11px;">
+                
+                <button type="button" onclick="createNewAlbum()" class="btn btn-primary btn-block" style="font-size:12px; font-weight:bold; background:#059669; border:none; margin-top:4px;">✨ Đăng Album Mới</button>
+            </div>
+        </div>
+    `;
+
+    let listHtml = albums.map(a => `
         <div class="card" style="margin-bottom:12px;">
             <img src="${a.cover || defaultAvatar}" style="width:100%; height:180px; object-fit:cover; border-radius:12px; background:#e2e8f0;">
             <h4 style="margin-top:8px; color:var(--text-color);">📸 ${a.title}</h4>
@@ -94,10 +111,10 @@ function renderMemoriesTab() {
         </div>
     `).join('');
 
-    container.innerHTML = html || "<p style='color:#777; font-size:12px;'>Chưa có Album kỷ niệm nào. Hãy điền tên và tạo Album đầu tiên!</p>";
+    container.innerHTML = createFormHtml + (listHtml || "<p style='color:#777; font-size:12px; text-align:center;'>Chưa có Album kỷ niệm nào. Hãy tạo Album đầu tiên ở trên!</p>");
 }
 
-// 1. Tạo Album mới
+// 1. Tạo Album mới (Công khai mọi tài khoản)
 function createNewAlbum() {
     let titleInput = document.getElementById('album-title-input');
     let dateInput = document.getElementById('album-date-input');
@@ -133,13 +150,12 @@ function saveAlbumNode(title, date, coverData) {
     if (document.getElementById('album-title-input')) document.getElementById('album-title-input').value = "";
     if (document.getElementById('album-cover-file')) document.getElementById('album-cover-file').value = "";
 
-    // Đẩy duy nhất Album này lên Node riêng trên Firebase
     if (typeof saveAlbumToCloudNode === 'function') {
         saveAlbumToCloudNode(newAlbum);
     }
 }
 
-// 2. Mở Modal Album
+// 2. Mở Modal Album & Đăng ảnh (Công khai mọi tài khoản)
 function viewAlbumPhotos(albumId) {
     let albums = getStoredAlbums();
     let album = albums.find(a => a.id === albumId);
@@ -182,7 +198,7 @@ function renderAlbumDetailModalContent(album) {
         <p style="font-size:12px; color:#555;">📅 Ngày tạo: ${album.date}</p>
 
         <div style="margin-top:10px; background:#fafafa; padding:10px; border-radius:12px; border:1px dashed var(--border-color);">
-            <label style="font-size:12px; font-weight:bold; color:var(--text-color);">➕ Chọn ảnh sắc nét để thêm vào Album này:</label>
+            <label style="font-size:12px; font-weight:bold; color:var(--text-color);">➕ Chọn ảnh để đăng vào Album này:</label>
             <input type="file" accept="image/*" onchange="addSingleAlbumImage(event, ${album.id})" class="form-control" style="font-size:11px; margin-top:4px;">
             
             <div id="album-photos-preview-box" style="margin-top:6px;"></div>
@@ -192,7 +208,7 @@ function renderAlbumDetailModalContent(album) {
 
         <h4 style="margin-top:14px; color:var(--text-color);">🖼️ Danh Sách Ảnh Trong Album (${(album.photos || []).length} ảnh):</h4>
         <div style="margin-top:8px; max-height:260px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:4px;">
-            ${photosHtml || "<p style='color:#888; font-size:12px; width:100%; text-align:center;'>Album này chưa have ảnh. Hãy chọn ảnh phía trên để thêm!</p>"}
+            ${photosHtml || "<p style='color:#888; font-size:12px; width:100%; text-align:center;'>Album này chưa có ảnh. Hãy chọn ảnh phía trên để thêm!</p>"}
         </div>
     `;
 
@@ -249,7 +265,7 @@ function renderAlbumPhotosPreview(albumId) {
     container.innerHTML = html;
 }
 
-// 4. Đăng ảnh vào Album & Đồng bộ Node Album đó
+// 4. Đăng ảnh lên Album & Đồng bộ
 function uploadPhotosToAlbum(albumId) {
     if (pendingAlbumImages.length === 0) {
         alert("⚠️ Vui lòng chọn ít nhất 1 hình ảnh!");
@@ -263,7 +279,6 @@ function uploadPhotosToAlbum(albumId) {
     if (!album.photos) album.photos = [];
     album.photos.unshift(...pendingAlbumImages);
 
-    // Cập nhật duy nhất Node Album này trên Firebase
     if (typeof saveAlbumToCloudNode === 'function') {
         saveAlbumToCloudNode(album);
     }
@@ -272,11 +287,16 @@ function uploadPhotosToAlbum(albumId) {
     pendingAlbumImages = [];
 }
 
+// 5. Chỉ Ban Cán Sự/Admin mới được quyền xóa Album
 function deleteAlbumToRecycle(albumId) {
+    if (!isBCSMemberSafe()) {
+        alert("⚠️ Chỉ Ban Cán Sự / Admin mới có quyền xóa Album!");
+        return;
+    }
+
     if (!confirm("Bạn có chắc chắn muốn xoá Album này?")) return;
 
-    // Xóa duy nhất Node Album này khỏi Firebase
     if (typeof removeAlbumFromCloudNode === 'function') {
         removeAlbumFromCloudNode(albumId);
     }
-}
+       }
