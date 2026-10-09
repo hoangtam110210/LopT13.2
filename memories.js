@@ -1,28 +1,20 @@
 /* ==========================================================================
-   MODULE ALBUM KỶ NIỆM - MỞ QUYỀN ĐĂNG CHO TOÀN BỘ THÀNH VIÊN LỚP
+   MODULE ALBUM KỶ NIỆM - TỐI ƯU TRUYỀN TẢI SIÊU TỐC & MỞ QUYỀN TOÀN LỚP
    ========================================================================== */
 
 let pendingAlbumImages = [];
 let currentOpeningAlbumId = null;
 
-// Hàm xử lý ảnh chất lượng cao (Full HD 1920px)
-function processHighQualityImage(file, callback) {
+// Hàm xử lý ảnh chuẩn sắc nét (1200px - ~150KB/ảnh) giúp Firebase truyền siêu tốc
+function processOptimizedHDImage(file, callback) {
     if (!file) { callback(""); return; }
-
-    if (file.size <= 800 * 1024) {
-        let reader = new FileReader();
-        reader.onload = function(e) { callback(e.target.result); };
-        reader.onerror = function() { callback(""); };
-        reader.readAsDataURL(file);
-        return;
-    }
 
     let reader = new FileReader();
     reader.onload = function(e) {
         let img = new Image();
         img.onload = function() {
             let canvas = document.createElement('canvas');
-            let maxWidth = 1920;
+            let maxWidth = 1200; // Chuẩn nét căng trên điện thoại & máy tính
             let w = img.width;
             let h = img.height;
 
@@ -37,8 +29,8 @@ function processHighQualityImage(file, callback) {
             let ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, w, h);
 
-            let highQualityDataUrl = canvas.toDataURL('image/jpeg', 0.88);
-            callback(highQualityDataUrl);
+            let optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.75);
+            callback(optimizedDataUrl);
         };
         img.onerror = function() { callback(""); };
         img.src = e.target.result;
@@ -68,7 +60,7 @@ function downloadAlbumPhoto(dataUrl, filename) {
     if (!dataUrl) return;
     let a = document.createElement('a');
     a.href = dataUrl;
-    a.download = filename || `Anh_Ky_Niem_T132_${Date.now()}.jpg`;
+    a.download = filename || `KyNiem_T132_${Date.now()}.jpg`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -82,15 +74,15 @@ function renderMemoriesTab() {
     let isBCS = isBCSMemberSafe();
     let defaultAvatar = typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : '';
 
-    // Khung tạo Album mở công khai cho TẤT CẢ học sinh/Thành viên
+    // Khung Tạo Album Mới (Mở cho tất cả mọi người)
     let createFormHtml = `
         <div class="card" style="margin-bottom:16px; border:2px dashed #10b981; background:#f0fdf4;">
-            <h3 style="margin-top:0; color:#047857; font-size:14px;">➕ Tạo Album Kỷ Niệm Mới (Tất cả thành viên)</h3>
+            <h3 style="margin-top:0; color:#047857; font-size:14px;">➕ Tạo Album Kỷ Niệm Mới</h3>
             <div style="display:flex; flex-direction:column; gap:8px;">
                 <input type="text" id="album-title-input" class="form-control" placeholder="Nhập tên Album kỷ niệm..." style="font-size:12px;">
                 <input type="date" id="album-date-input" class="form-control" style="font-size:12px;">
                 
-                <label style="font-size:11px; font-weight:bold; color:#555; margin-bottom:-4px;">Chọn ảnh bìa Album (Không bắt buộc):</label>
+                <label style="font-size:11px; font-weight:bold; color:#555; margin-bottom:-4px;">Ảnh bìa Album (Không bắt buộc):</label>
                 <input type="file" id="album-cover-file" accept="image/*" class="form-control" style="font-size:11px;">
                 
                 <button type="button" onclick="createNewAlbum()" class="btn btn-primary btn-block" style="font-size:12px; font-weight:bold; background:#059669; border:none; margin-top:4px;">✨ Đăng Album Mới</button>
@@ -114,7 +106,7 @@ function renderMemoriesTab() {
     container.innerHTML = createFormHtml + (listHtml || "<p style='color:#777; font-size:12px; text-align:center;'>Chưa có Album kỷ niệm nào. Hãy tạo Album đầu tiên ở trên!</p>");
 }
 
-// 1. Tạo Album mới (Công khai mọi tài khoản)
+// 1. Tạo Album mới
 function createNewAlbum() {
     let titleInput = document.getElementById('album-title-input');
     let dateInput = document.getElementById('album-date-input');
@@ -130,7 +122,7 @@ function createNewAlbum() {
     }
 
     if (file) {
-        processHighQualityImage(file, function(hdCover) {
+        processOptimizedHDImage(file, function(hdCover) {
             saveAlbumNode(title, date, hdCover);
         });
     } else {
@@ -152,10 +144,13 @@ function saveAlbumNode(title, date, coverData) {
 
     if (typeof saveAlbumToCloudNode === 'function') {
         saveAlbumToCloudNode(newAlbum);
+        alert("✨ Đã đăng Album thành công!");
+    } else {
+        alert("❌ Chưa nạp xong bộ đồng bộ Cloud, vui lòng thử lại sau vài giây.");
     }
 }
 
-// 2. Mở Modal Album & Đăng ảnh (Công khai mọi tài khoản)
+// 2. Mở Modal Album
 function viewAlbumPhotos(albumId) {
     let albums = getStoredAlbums();
     let album = albums.find(a => a.id === albumId);
@@ -225,7 +220,7 @@ function addSingleAlbumImage(event, albumId) {
     let file = event.target.files[0];
     if (!file) return;
 
-    processHighQualityImage(file, function(hdImg) {
+    processOptimizedHDImage(file, function(hdImg) {
         if (hdImg) {
             pendingAlbumImages.push(hdImg);
             let albums = getStoredAlbums();
@@ -265,7 +260,7 @@ function renderAlbumPhotosPreview(albumId) {
     container.innerHTML = html;
 }
 
-// 4. Đăng ảnh lên Album & Đồng bộ
+// 4. Đăng ảnh vào Album
 function uploadPhotosToAlbum(albumId) {
     if (pendingAlbumImages.length === 0) {
         alert("⚠️ Vui lòng chọn ít nhất 1 hình ảnh!");
@@ -281,13 +276,12 @@ function uploadPhotosToAlbum(albumId) {
 
     if (typeof saveAlbumToCloudNode === 'function') {
         saveAlbumToCloudNode(album);
+        alert(`📸 Đã tải lên ${pendingAlbumImages.length} ảnh thành công!`);
     }
 
-    alert(`📸 Đã tải thêm ${pendingAlbumImages.length} ảnh nét! Đang đồng bộ...`);
     pendingAlbumImages = [];
 }
 
-// 5. Chỉ Ban Cán Sự/Admin mới được quyền xóa Album
 function deleteAlbumToRecycle(albumId) {
     if (!isBCSMemberSafe()) {
         alert("⚠️ Chỉ Ban Cán Sự / Admin mới có quyền xóa Album!");
@@ -299,4 +293,4 @@ function deleteAlbumToRecycle(albumId) {
     if (typeof removeAlbumFromCloudNode === 'function') {
         removeAlbumFromCloudNode(albumId);
     }
-       }
+}
