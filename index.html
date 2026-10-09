@@ -1,233 +1,193 @@
-/* ==========================================================================
-   MODULE LAO ĐỘNG & KỶ LUẬT - BẢO MẬT PHÂN QUYỀN CHỈ LỚP PHÓ LAO ĐỘNG
-   ========================================================================== */
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T13.2 Hub - Custom Pastel</title>
+    <link rel="stylesheet" href="style.css?v=22">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- KHU VỰC KHÓA BẢO MẬT & ĐĂNG NHẬP -->
+    <div id="auth-modal-body"></div>
 
-const SEMESTER_START_DATE = new Date(2026, 8, 7); // Mốc Thứ 2 Tuần 1
-
-// HÀM KIỂM TRA QUYỀN LỚP PHÓ LAO ĐỘNG / BAN CÁN SỰ
-function isLaborMonitor() {
-    try {
-        let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-        if (typeof isSystemAdmin === 'function' && isSystemAdmin()) return true;
-        
-        // Kiểm tra tên hoặc chức danh
-        return currentUser.name === 'Hoàng Ngọc Minh Tâm' || 
-               currentUser.role === 'LABOR_MONITOR' || 
-               currentUser.role === 'Lớp phó lao động' || 
-               currentUser.position === 'Lớp phó lao động';
-    } catch (e) {
-        return false;
-    }
-}
-
-function getStudentNameList() {
-    try {
-        let users = JSON.parse(localStorage.getItem('T132_USERS')) || [];
-        if (users.length > 0) return users.map(u => u.name);
-    } catch(e) {}
-    
-    if (typeof T132_STUDENT_DATABASE !== 'undefined') {
-        return T132_STUDENT_DATABASE.map(s => s.name);
-    }
-    return [];
-}
-
-function getStudentPenaltyBalanceMap() {
-    let violations = [];
-    try { violations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || []; } catch(e) {}
-
-    let map = {};
-    violations.forEach(v => {
-        if (!map[v.studentName]) map[v.studentName] = 0;
-        map[v.studentName] += (parseInt(v.penaltyDays) || 0);
-    });
-    return map;
-}
-
-const LABOR_DAYS_MAP = [
-    { key: "thu2", label: "Thứ 2" },
-    { key: "thu3", label: "Thứ 3" },
-    { key: "thu4", label: "Thứ 4" },
-    { key: "thu5", label: "Thứ 5" },
-    { key: "thu6", label: "Thứ 6" },
-    { key: "thu7", label: "Thứ 7" }
-];
-
-const DISCIPLINE_RULES_CATALOG = [
-    { name: "Trừ 1-3 điểm tổng kết", days: 3 },
-    { name: "Trừ 4-10 điểm tổng kết", days: 6 },
-    { name: "Trừ 11-20 điểm tổng kết", days: 12 },
-    { name: "Trừ 21-99 điểm tổng kết", days: 18 },
-    { name: "Trừ từ 100 điểm trở lên", days: 24 },
-    { name: "Tác phong / Đi học trễ", days: 1 },
-    { name: "Ngủ gật trong lớp", days: 1 },
-    { name: "Quên sách vở dụng cụ", days: 1 },
-    { name: "Ăn uống trong lớp", days: 3 },
-    { name: "Vi phạm bài tập / học bài", days: 3 },
-    { name: "Thái độ không chuẩn mực", days: 3 },
-    { name: "Làm việc riêng", days: 6 },
-    { name: "Bị ghi vào sổ đầu bài", days: 6 },
-    { name: "Không dọn bàn / ghế tự học", days: 6 },
-    { name: "Xả rác / rác trong hộc bàn", days: 1 },
-    { name: "Không lao động trực nhật", days: 3 },
-    { name: "Làm lao động không sạch", days: 3 },
-    { name: "Không đổ rác trước khi ra về", days: 2 },
-    { name: "Không trực nhật (Nghỉ hẳn)", days: 6 },
-    { name: "Dụng cụ lao động không gọn gàng", days: 6 },
-    { name: "Bị bắt Điện thoại - Laptop", days: 12 },
-    { name: "Chậm trễ công việc được giao", days: 12 }
-];
-
-function getCurrentWeekIndex() {
-    let savedWeek = localStorage.getItem('T132_CURRENT_WEEK');
-    if (savedWeek) return parseInt(savedWeek);
-    
-    let now = new Date();
-    let diffTime = now - SEMESTER_START_DATE;
-    let diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-    let weekIndex = Math.floor(diffDays / 7) + 1;
-    return weekIndex < 1 ? 1 : (weekIndex > 35 ? 35 : weekIndex);
-}
-
-// BẢO VỆ HÀM ĐỔI TUẦN
-function setCurrentClassWeek(newWeekNum) {
-    if (!isLaborMonitor()) {
-        alert("⚠️ Bạn không có quyền! Chỉ Lớp phó Lao động mới được thay đổi Tuần hiện tại của lớp.");
-        renderDisciplineDutyTab();
-        return;
-    }
-    let weekInt = parseInt(newWeekNum) || 1;
-    localStorage.setItem('T132_CURRENT_WEEK', weekInt);
-    alert(`⚙️ Đã thiết lập tuần hiện tại của lớp thành: TUẦN ${weekInt}`);
-    renderDisciplineDutyTab();
-    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
-}
-
-function getWeekDateRange(weekNum) {
-    let monday = new Date(SEMESTER_START_DATE);
-    monday.setDate(SEMESTER_START_DATE.getDate() + (weekNum - 1) * 7);
-    monday.setHours(0, 0, 0, 0);
-
-    let sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-
-    return { monday, sunday };
-}
-
-function formatDateDisplay(d) {
-    return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-}
-
-/* --------------------------------------------------------------------------
-   RENDER TỔNG THỂ TAB LAO ĐỘNG (PHÂN BIỆT RÕ HỌC SINH VÀ LỚP PHÓ LAO ĐỘNG)
-   -------------------------------------------------------------------------- */
-function renderDisciplineDutyTab() {
-    let container = document.getElementById('tab-labor');
-    if (!container) return;
-
-    let isLaborAdmin = isLaborMonitor();
-    let studentNames = getStudentNameList();
-    let currentWeekNum = getCurrentWeekIndex();
-    let penaltyBalanceMap = getStudentPenaltyBalanceMap();
-
-    let sortedStudentsForAssign = [...studentNames].sort((a, b) => {
-        let balA = penaltyBalanceMap[a] || 0;
-        let balB = penaltyBalanceMap[b] || 0;
-        return balB - balA;
-    });
-
-    let defaultSchedule = {
-        "Thứ 2": [], "Thứ 3": [], "Thứ 4": [],
-        "Thứ 5": [], "Thứ 6": [], "Thứ 7": []
-    };
-
-    let schedule = defaultSchedule;
-    try {
-        let savedSched = JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE'));
-        if (savedSched) schedule = Object.assign({}, defaultSchedule, savedSched);
-    } catch (e) {}
-
-    let dutyStatus = {};
-    try {
-        let savedStatus = JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS'));
-        if (savedStatus) dutyStatus = savedStatus;
-    } catch (e) {}
-
-    let violations = [];
-    try {
-        let savedViolations = JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS'));
-        if (Array.isArray(savedViolations)) violations = savedViolations;
-    } catch (e) {}
-
-    let scheduleHtml = "";
-
-    // NÚT XUẤT FILE PHÂN CÔNG LAO ĐỘNG
-    let exportButtonsHtml = `
-        <div style="display:flex; gap:6px;">
-            <button type="button" onclick="exportLaborScheduleFile('excel')" class="btn btn-primary" style="font-size:10px; padding:3px 8px;">📊 Xuất Excel (.csv)</button>
-            <button type="button" onclick="exportLaborScheduleFile('doc')" class="btn btn-warning" style="font-size:10px; padding:3px 8px;">📄 Tải Word (.doc)</button>
+    <header>
+        <div class="header-logo">🍀 T13.2 HUB</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <img id="header-avatar" src="" style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid var(--primary-color);">
+            <div>
+                <div id="header-username" style="font-size:12px; font-weight:700;">Thành viên</div>
+                <span id="user-role-badge" class="badge bg-sage">Học sinh</span>
+            </div>
         </div>
-    `;
+    </header>
 
-    // 1. PHÂN CÔNG LAO ĐỘNG (CHỈ HỌC SINH CÓ QUYỀN MỚI THẤY FORM SỬA)
-    if (isLaborAdmin) {
-        let inputsHtml = LABOR_DAYS_MAP.map(d => {
-            let assignedList = schedule[d.label] || [];
-            let checkboxesHtml = sortedStudentsForAssign.map(name => {
-                let isChecked = Array.isArray(assignedList) && assignedList.includes(name) ? 'checked' : '';
-                let bal = penaltyBalanceMap[name] || 0;
-                let badgeHtml = bal > 0 ? `<b style="color:#dc2626; font-size:9px;">🔥 Nợ ${bal} ngày</b>` : '';
+    <div class="container" id="main-app">
+        <!-- 1. TAB TRANG CHỦ -->
+        <div id="tab-home" class="view-section active">
+            <div id="admin-role-manager-box"></div>
 
-                return `
-                    <label style="display:inline-block; margin-right:6px; margin-bottom:4px; font-size:10px; background:${bal > 0 ? '#fef2f2' : '#f1f5f9'}; padding:3px 6px; border-radius:4px; cursor:pointer; border:1px solid ${bal > 0 ? '#fca5a5' : '#cbd5e1'};">
-                        <input type="checkbox" class="sched-checkbox-${d.key}" value="${name}" ${isChecked}> ${name} ${badgeHtml}
-                    </label>
-                `;
-            }).join('');
+            <div class="card">
+                <h3 style="color:var(--text-color);">📊 Biểu Đồ Thống Kê Lớp T13.2</h3>
+                <div style="height:200px; margin-top:10px;">
+                    <canvas id="chartBarTasks"></canvas>
+                </div>
+            </div>
+        </div>
 
-            return `
-                <div style="margin-bottom:10px; border-bottom:1px dashed #cbd5e1; padding-bottom:8px;">
-                    <b style="font-size:11px; color:var(--primary-color); display:block; margin-bottom:4px;">📅 ${d.label}:</b>
-                    <div style="max-height:100px; overflow-y:auto; border:1px solid #e2e8f0; padding:6px; border-radius:6px; background:#fff;">
-                        ${checkboxesHtml}
+        <!-- 2. TAB LAO ĐỘNG & BẢNG GHI LỖI -->
+        <div id="tab-labor" class="view-section"></div>
+
+        <!-- 3. TAB CÔNG VIỆC -->
+        <div id="tab-tasks" class="view-section">
+            <div class="card bcs-only">
+                <h3 style="color:var(--text-color);">📌 Ban Cán Sự: Tạo Công Việc Mới</h3>
+                <input type="text" id="task-title-input" class="form-control" placeholder="Tên công việc...">
+                
+                <div style="margin-top:6px;">
+                    <label style="font-size:11px; font-weight:bold;">Tích chọn học sinh phụ trách làm:</label>
+                    <div style="display:flex; gap:8px; margin:4px 0;">
+                        <button type="button" onclick="toggleSelectAllTaskStudents(true)" class="btn btn-primary" style="font-size:10px; padding:2px 6px;">Chọn Tất Cả</button>
+                        <button type="button" onclick="toggleSelectAllTaskStudents(false)" class="btn btn-danger" style="font-size:10px; padding:2px 6px;">Bỏ Chọn</button>
+                    </div>
+                    <div id="task-assign-student-checkboxes" style="max-height:120px; overflow-y:auto; padding:6px; border:1px solid var(--border-color); border-radius:8px; background:#fff;"></div>
+                </div>
+
+                <button type="button" onclick="createNewClassTask()" class="btn btn-primary btn-block" style="margin-top:8px;">🚀 Giao Việc</button>
+            </div>
+            <div id="tasks-container"></div>
+        </div>
+
+        <!-- 4. TAB RANDOM -->
+        <div id="tab-random" class="view-section">
+            <div class="card">
+                <h3 style="color:var(--text-color);">🎲 Random Vòng Quay Có Avatar</h3>
+                <input type="text" id="rand-purpose" class="form-control" placeholder="Mục đích bốc thăm...">
+                <div class="grid-2">
+                    <input type="number" id="rand-count" class="form-control" value="1" placeholder="Số lượng chọn">
+                    <input type="number" id="rand-duration" class="form-control" value="3" placeholder="Thời gian quay (s)">
+                </div>
+                
+                <select id="rand-mode-select" class="form-control" style="margin-top:6px;">
+                    <option value="slot">🎰 Vòng Quay Slot Machine</option>
+                    <option value="card">🃏 Lật Thẻ Bài Bí Mật</option>
+                    <option value="lottery">🎟️ Lồng Cầu Xổ Số (Bóng Nảy)</option>
+                </select>
+
+                <button type="button" onclick="executeCustomRandomSpin()" class="btn btn-warning btn-block" style="margin-top:8px;">🎲 Quay Ngẫu Nhiên</button>
+                <div id="rand-winner-box" style="margin-top:10px; display:none;"></div>
+            </div>
+            <details class="card">
+                <summary style="font-size:12px; font-weight:bold; cursor:pointer;">⚙️ Tích chọn loại trừ học sinh bận...</summary>
+                <div id="rand-exclusion-list" style="margin-top:8px; max-height:120px; overflow-y:auto;"></div>
+            </details>
+        </div>
+
+        <!-- 5. TAB QUỸ LỚP -->
+        <div id="tab-fund" class="view-section">
+            <div id="fund-container-box"></div>
+        </div>
+
+        <!-- 6. TAB ALBUM KỶ NIỆM -->
+        <div id="tab-memories" class="view-section">
+            <div class="card">
+                <h3 style="color:var(--text-color);">📸 Tạo Album Kỷ Niệm Mới</h3>
+                <input type="text" id="album-title-input" class="form-control" placeholder="Tên Album...">
+                <input type="date" id="album-date-input" class="form-control">
+                <label style="font-size:11px; font-weight:bold;">Tải ảnh đại diện Album:</label>
+                <input type="file" id="album-cover-file" accept="image/*" class="form-control" style="font-size:11px;">
+                <button type="button" onclick="createNewAlbum()" class="btn btn-primary btn-block" style="margin-top:6px;">✨ Tạo Album</button>
+            </div>
+            <div id="memories-album-grid"></div>
+        </div>
+
+        <!-- 7. TAB THƯ ẨN DANH & KHO TÀI LIỆU -->
+        <div id="tab-docs" class="view-section">
+            <div class="card">
+                <h3 style="color:var(--text-color);">🔒 Thư Góp Ý Ẩn Danh</h3>
+                <input type="text" id="anonymous-text-input" class="form-control" placeholder="Nhập góp ý ẩn danh...">
+                <button type="button" onclick="sendAnonymousFeedback()" class="btn btn-danger btn-block" style="margin-top:6px;">🔒 Gửi Ẩn Danh</button>
+                <div id="feedback-list-box" style="margin-top:10px;"></div>
+            </div>
+
+            <div class="card">
+                <h3 style="color:var(--text-color);">📁 Kho Tài Liệu (Tên Môn Tùy Ý)</h3>
+                <input type="text" id="doc-folder-custom-input" class="form-control" placeholder="Nhập tên môn / Tên thư mục (VD: Toán, Văn, Lý)...">
+                <input type="file" id="doc-file-input" class="form-control">
+                <button type="button" onclick="uploadDocumentFile()" class="btn btn-primary btn-block" style="margin-top:6px;">📤 Tải Tệp Lên Kho</button>
+                <div id="documents-folder-box" style="margin-top:10px;"></div>
+            </div>
+        </div>
+
+        <!-- 8. TAB TRANG CÁ NHÂN -->
+        <div id="tab-profile" class="view-section">
+            <div class="card" style="text-align:center;">
+                <h3>👤 Trang Cá Nhân</h3>
+                <img id="profile-avatar-preview" src="" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary-color); margin-top:8px;">
+                <input type="file" id="profile-avatar-input" accept="image/*" onchange="previewProfileAvatar(event)" style="font-size:11px; margin-top:6px;">
+
+                <div style="margin-top:10px; text-align:left;">
+                    <label style="font-size:11px; font-weight:bold;">Tên thật:</label>
+                    <input type="text" id="profile-name-input" class="form-control" readonly style="background:#f0f0f0;">
+
+                    <label style="font-size:11px; font-weight:bold;">Biệt danh (Nickname):</label>
+                    <input type="text" id="profile-nickname-input" class="form-control" placeholder="Nhập biệt danh...">
+
+                    <label style="font-size:11px; font-weight:bold;">Giới thiệu bản thân (Bio):</label>
+                    <textarea id="profile-bio-input" class="form-control" rows="2" placeholder="Ghi vài dòng giới thiệu..."></textarea>
+
+                    <button type="button" onclick="saveUserProfileInfo()" class="btn btn-primary btn-block" style="margin-top:6px;">💾 Lưu Thông Tin Cá Nhân</button>
+                </div>
+
+                <div style="margin-top:14px; text-align:left;">
+                    <label style="font-size:12px; font-weight:bold;">🎨 Tông màu giao diện:</label>
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+                        <button type="button" onclick="changeUserTheme('default')" class="btn btn-primary" style="font-size:10px;">🌱 Cỏ 4 Lá</button>
+                        <button type="button" onclick="changeUserTheme('blue')" class="btn" style="background:#48cae4; color:#fff; font-size:10px;">🌊 Biển Cả</button>
+                        <button type="button" onclick="changeUserTheme('lavender')" class="btn" style="background:#a855f7; color:#fff; font-size:10px;">🔮 Mơ Mộng</button>
+                        <button type="button" onclick="changeUserTheme('coral')" class="btn" style="background:#ff758f; color:#fff; font-size:10px;">🌅 Hoàng Hôn</button>
                     </div>
                 </div>
-            `;
-        }).join('');
-
-        scheduleHtml = `
-            <div class="card" style="margin-bottom:12px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                    <h3 style="color:var(--text-color); margin:0;">🧹 Phân Công Trực Nhật (Tuần ${currentWeekNum})</h3>
-                    ${exportButtonsHtml}
-                </div>
-                <p style="font-size:10px; color:#dc2626; font-weight:bold; margin-bottom:6px;">🔥 Danh sách tự động ưu tiên học sinh nợ lao động cao lên đầu:</p>
-                ${inputsHtml}
-                <button onclick="saveLaborSchedule()" class="btn btn-primary btn-block" style="margin-top:6px; font-size:11px;">💾 Lưu Bảng Phân Công</button>
             </div>
-        `;
-    } else {
-        // HỌC SINH THƯỜNG CHỈ THẤY BẢNG XEM LỊCH (READ-ONLY)
-        let rowsHtml = LABOR_DAYS_MAP.map(d => {
-            let list = schedule[d.label] || [];
-            let nameStr = Array.isArray(list) ? list.join(', ') : (list || 'Chưa phân công');
-            return `
-                <tr style="border-bottom:1px solid #eee;">
-                    <td style="padding:6px; font-weight:bold; color:var(--primary-color); font-size:11px; width:70px;">${d.label}</td>
-                    <td style="padding:6px; font-size:11px; color:#333;">${nameStr || 'Chưa phân công'}</td>
-                </tr>
-            `;
-        }).join('');
+        </div>
+    </div>
 
-        scheduleHtml = `
-            <div class="card" style="margin-bottom:12px;">
-                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
-                    <h3 style="color:var(--text-color); margin:0;">📋 Lịch Trực Nhật Trong Tuần ${currentWeekNum}</h3>
-                    ${exportButtonsHtml}
-                </div>
-                <table style="width:100%; border-collapse:collapse; text-align:left;">
-                    <tbody>${rowsHtml}</tbody>
+    <!-- MODALS OVERLAY -->
+    <div id="album-detail-modal" class="card" style="display:none; position:fixed; top:5%; left:5%; right:5%; bottom:5%; z-index:200; overflow-y:auto; background:#fff; border:3px solid var(--primary-color);">
+        <div id="album-detail-content"></div>
+    </div>
+
+    <!-- THANH NAV MENU DƯỚI -->
+    <nav>
+        <button type="button" onclick="switchTab('tab-home')" class="active">📊 Trang chủ</button>
+        <button type="button" onclick="switchTab('tab-labor')">🧹 Lao động</button>
+        <button type="button" onclick="switchTab('tab-tasks')">📌 Công việc</button>
+        <button type="button" onclick="switchTab('tab-random')">🎲 Random</button>
+        <button type="button" onclick="switchTab('tab-fund')">💰 Quỹ lớp</button>
+        <button type="button" onclick="switchTab('tab-memories')">📸 Kỷ niệm</button>
+        <button type="button" onclick="switchTab('tab-docs')">📁 Tài liệu</button>
+        <button type="button" onclick="switchTab('tab-profile')">👤 Cá nhân</button>
+    </nav>
+
+    <!-- THƯ VIỆN BÊN NGOÀI -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+    <!-- CÁC FILE CHỨC NĂNG NỘI BỘ DỰ ÁN -->
+    <script src="data.js"></script>
+    <script src="sync-cloud.js"></script>
+    <script src="app.js"></script>
+    <script src="auth.js"></script>
+    <script src="discipline_duty.js"></script>
+    <script src="profile.js"></script>
+    <script src="random.js"></script>
+    <script src="tasks.js"></script>
+    <script src="fund_score.js"></script>
+    <script src="memories.js"></script>
+    <script src="feedback_docs.js"></script>
+</body>
+</html>
+/tbody>
                 </table>
             </div>
         `;
