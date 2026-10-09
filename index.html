@@ -173,17 +173,25 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
 
-    <!-- CÁC FILE CHỨC NĂNG NỘI BỘ DỰ ÁN -->
-    <script src="data.js"></script>
-    <script src="sync-cloud.js"></script>
-    <script src="app.js"></script>
-    <script src="auth.js"></script>
-    <script src="discipline_duty.js"></script>
-    <script src="profile.js"></script>
-    <script src="random.js"></script>
-    <script src="tasks.js"></script>
-    <script src="fund_score.js"></script>
-    <script src="memories.js"></script>
-    <script src="feedback_docs.js"></script>
+    <!-- 1. CÁC FILE CHỨC NĂNG NỘI BỘ (NẠP TRƯỚC) -->
+    <script src="data.js?v=5"></script>
+    <script src="auth.js?v=5"></script>
+    <script src="discipline_duty.js?v=5"></script>
+    <script src="profile.js?v=5"></script>
+    <script src="random.js?v=5"></script>
+    <script src="tasks.js?v=5"></script>
+    <script src="fund_score.js?v=5"></script>
+    <script src="memories.js?v=5"></script>
+    <script src="feedback_docs.js?v=5"></script>
+
+    <!-- 2. BỘ ĐỒNG BỘ CLOUD & ĐIỀU PHỐI (NẠP SAU CÙNG) -->
+    <script src="sync-cloud.js?v=5"></script>
+    <script src="app.js?v=5"></script>
+
+    <!-- KHUNG POPUP XEM ALBUM -->
+    <div id="album-detail-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:99999; padding:15px; box-sizing:border-box; overflow-y:auto;">
+        <div style="background:#fff; max-width:500px; margin:20px auto; padding:15px; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.3);" id="album-detail-content"></div>
+    </div>
+
 </body>
 </html>
