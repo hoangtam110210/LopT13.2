@@ -1,15 +1,13 @@
 /* ==========================================================================
-   MODULE ALBUM KỶ NIỆM - GIỮ ẢNH NÉT FULL HD (1920PX) & TẢI ẢNH CHẤT LƯỢNG CAO
+   MODULE ALBUM KỶ NIỆM - TẢI ẢNH NÉT HD & ĐỒNG BỘ NODE ĐỘC LẬP CHỐNG MẤT
    ========================================================================== */
 
 let pendingAlbumImages = [];
 let currentOpeningAlbumId = null;
 
-// Hàm xử lý ảnh chất lượng cao (Full HD 1920px - 90% Quality)
 function processHighQualityImage(file, callback) {
     if (!file) { callback(""); return; }
 
-    // Nếu ảnh nhỏ sẵn (dưới 800KB), giữ nguyên 100% gốc không nén
     if (file.size <= 800 * 1024) {
         let reader = new FileReader();
         reader.onload = function(e) { callback(e.target.result); };
@@ -18,13 +16,12 @@ function processHighQualityImage(file, callback) {
         return;
     }
 
-    // Với ảnh lớn (3MB - 12MB), đưa về chuẩn Full HD 1920px nét căng
     let reader = new FileReader();
     reader.onload = function(e) {
         let img = new Image();
         img.onload = function() {
             let canvas = document.createElement('canvas');
-            let maxWidth = 1920; // Chuẩn Full HD
+            let maxWidth = 1920;
             let w = img.width;
             let h = img.height;
 
@@ -39,8 +36,7 @@ function processHighQualityImage(file, callback) {
             let ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, w, h);
 
-            // Giữ chất lượng 0.9 (90% nét)
-            let highQualityDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            let highQualityDataUrl = canvas.toDataURL('image/jpeg', 0.88);
             callback(highQualityDataUrl);
         };
         img.onerror = function() { callback(""); };
@@ -50,14 +46,20 @@ function processHighQualityImage(file, callback) {
     reader.readAsDataURL(file);
 }
 
-// Kiểm tra quyền Ban Cán Sự an toàn
+function getStoredAlbums() {
+    try {
+        return JSON.parse(localStorage.getItem('T132_MEMORIES')) || window['T132_MEMORIES_TEMP'] || [];
+    } catch(e) {
+        return window['T132_MEMORIES_TEMP'] || [];
+    }
+}
+
 function isBCSMemberSafe() {
     if (typeof isBCSMember === 'function') return isBCSMember();
     if (typeof isSystemAdmin === 'function') return isSystemAdmin();
     return false;
 }
 
-// Hàm tải ảnh nét về máy
 function downloadAlbumPhoto(dataUrl, filename) {
     if (!dataUrl) return;
     let a = document.createElement('a');
@@ -72,7 +74,7 @@ function renderMemoriesTab() {
     let container = document.getElementById('memories-album-grid');
     if (!container) return;
 
-    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
+    let albums = getStoredAlbums();
     let isBCS = isBCSMemberSafe();
     let defaultAvatar = typeof DEFAULT_AVATAR !== 'undefined' ? DEFAULT_AVATAR : '';
 
@@ -107,44 +109,36 @@ function createNewAlbum() {
         return;
     }
 
-    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
-
     if (file) {
         processHighQualityImage(file, function(hdCover) {
-            saveAlbumToStorage(albums, title, date, hdCover);
+            saveAlbumNode(title, date, hdCover);
         });
     } else {
-        saveAlbumToStorage(albums, title, date, "");
+        saveAlbumNode(title, date, "");
     }
 }
 
-function saveAlbumToStorage(albums, title, date, coverData) {
-    albums.unshift({
+function saveAlbumNode(title, date, coverData) {
+    let newAlbum = {
         id: Date.now(),
         title: title,
         date: date || new Date().toLocaleDateString('vi-VN'),
         cover: coverData,
         photos: []
-    });
-
-    try {
-        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
-    } catch (e) {
-        console.warn("Bộ nhớ máy đầy, ưu tiên đẩy trực tiếp lên Cloud");
-    }
-
-    alert("✨ Đã tạo Album kỷ niệm mới thành công!");
+    };
 
     if (document.getElementById('album-title-input')) document.getElementById('album-title-input').value = "";
     if (document.getElementById('album-cover-file')) document.getElementById('album-cover-file').value = "";
-    
-    renderMemoriesTab();
-    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
+
+    // Đẩy duy nhất Album này lên Node riêng trên Firebase
+    if (typeof saveAlbumToCloudNode === 'function') {
+        saveAlbumToCloudNode(newAlbum);
+    }
 }
 
 // 2. Mở Modal Album
 function viewAlbumPhotos(albumId) {
-    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
+    let albums = getStoredAlbums();
     let album = albums.find(a => a.id === albumId);
     if (!album) return;
 
@@ -160,7 +154,7 @@ function viewAlbumPhotos(albumId) {
 
 function refreshCurrentAlbumModal() {
     if (!currentOpeningAlbumId) return;
-    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
+    let albums = getStoredAlbums();
     let album = albums.find(a => a.id === currentOpeningAlbumId);
     if (album) renderAlbumDetailModalContent(album);
 }
@@ -195,7 +189,7 @@ function renderAlbumDetailModalContent(album) {
 
         <h4 style="margin-top:14px; color:var(--text-color);">🖼️ Danh Sách Ảnh Trong Album (${(album.photos || []).length} ảnh):</h4>
         <div style="margin-top:8px; max-height:260px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:4px;">
-            ${photosHtml || "<p style='color:#888; font-size:12px; width:100%; text-align:center;'>Album này chưa có ảnh. Hãy chọn ảnh phía trên để thêm!</p>"}
+            ${photosHtml || "<p style='color:#888; font-size:12px; width:100%; text-align:center;'>Album này chưa have ảnh. Hãy chọn ảnh phía trên để thêm!</p>"}
         </div>
     `;
 
@@ -208,7 +202,6 @@ function closeAlbumModal() {
     if (modal) modal.style.display = 'none';
 }
 
-// 3. Chọn ảnh Full HD cho Album
 function addSingleAlbumImage(event, albumId) {
     let file = event.target.files[0];
     if (!file) return;
@@ -216,7 +209,7 @@ function addSingleAlbumImage(event, albumId) {
     processHighQualityImage(file, function(hdImg) {
         if (hdImg) {
             pendingAlbumImages.push(hdImg);
-            let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
+            let albums = getStoredAlbums();
             let album = albums.find(a => a.id === albumId);
             if (album) renderAlbumDetailModalContent(album);
         }
@@ -227,7 +220,7 @@ function addSingleAlbumImage(event, albumId) {
 
 function removePendingAlbumImage(index, albumId) {
     pendingAlbumImages.splice(index, 1);
-    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
+    let albums = getStoredAlbums();
     let album = albums.find(a => a.id === albumId);
     if (album) renderAlbumDetailModalContent(album);
 }
@@ -253,43 +246,34 @@ function renderAlbumPhotosPreview(albumId) {
     container.innerHTML = html;
 }
 
-// 4. Lưu ảnh Full HD vào Album & Đồng bộ Cloud ngay lập tức
+// 4. Đăng ảnh vào Album & Đồng bộ Node Album đó
 function uploadPhotosToAlbum(albumId) {
     if (pendingAlbumImages.length === 0) {
         alert("⚠️ Vui lòng chọn ít nhất 1 hình ảnh!");
         return;
     }
 
-    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
+    let albums = getStoredAlbums();
     let album = albums.find(a => a.id === albumId);
     if (!album) return;
 
     if (!album.photos) album.photos = [];
     album.photos.unshift(...pendingAlbumImages);
 
-    try {
-        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
-    } catch (e) {
-        console.warn("LocalStorage đầy, tiếp tục đẩy lên Firebase.");
+    // Cập nhật duy nhất Node Album này trên Firebase
+    if (typeof saveAlbumToCloudNode === 'function') {
+        saveAlbumToCloudNode(album);
     }
 
-    alert(`📸 Đã tải thêm ${pendingAlbumImages.length} ảnh nét vào Album thành công!`);
-
+    alert(`📸 Đã tải thêm ${pendingAlbumImages.length} ảnh nét! Đang đồng bộ...`);
     pendingAlbumImages = [];
-    viewAlbumPhotos(albumId);
-    renderMemoriesTab();
-    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
 
 function deleteAlbumToRecycle(albumId) {
     if (!confirm("Bạn có chắc chắn muốn xoá Album này?")) return;
-    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
-    albums = albums.filter(a => a.id !== albumId);
-    
-    try {
-        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
-    } catch (e) {}
 
-    renderMemoriesTab();
-    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
+    // Xóa duy nhất Node Album này khỏi Firebase
+    if (typeof removeAlbumFromCloudNode === 'function') {
+        removeAlbumFromCloudNode(albumId);
+    }
 }
