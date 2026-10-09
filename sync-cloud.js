@@ -115,8 +115,7 @@ async function pushLocalDataToCloud() {
         setTimeout(() => { isPushingLocal = false; }, 300);
     }
 }
-
-/* --------------------------------------------------------------------------
+   /* --------------------------------------------------------------------------
    3. CẬP NHẬT GIAO DIỆN MÀN HÌNH ĐANG MỞ KHI CÓ DỮ LIỆU MỚI TỪ LỚP
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
@@ -128,7 +127,10 @@ function refreshActiveTabUI() {
     if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
     if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
     if (tabId === 'tab-fund' && typeof renderFundTab === 'function') renderFundTab();
-    if (tabId === 'tab-memories' && typeof renderMemoriesTab === 'function') renderMemoriesTab();
+    if (tabId === 'tab-memories') {
+        if (typeof renderMemoriesTab === 'function') renderMemoriesTab();
+        if (typeof refreshCurrentAlbumModal === 'function') refreshCurrentAlbumModal();
+    }
     if (tabId === 'tab-docs') {
         if (typeof renderFeedbackList === 'function') renderFeedbackList();
         if (typeof renderDocumentsList === 'function') renderDocumentsList();
