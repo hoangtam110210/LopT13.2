@@ -48,7 +48,10 @@ function processHighQualityImage(file, callback) {
 
 function getStoredAlbums() {
     try {
-        return JSON.parse(localStorage.getItem('T132_MEMORIES')) || window['T132_MEMORIES_TEMP'] || [];
+        let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || 
+                     JSON.parse(localStorage.getItem('T132_MEMORIES_BACKUP')) || 
+                     window['T132_MEMORIES_TEMP'] || [];
+        return albums;
     } catch(e) {
         return window['T132_MEMORIES_TEMP'] || [];
     }
