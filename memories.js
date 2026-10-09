@@ -1,15 +1,13 @@
 /* ==========================================================================
-   MODULE ALBUM KỶ NIỆM - TẢI & NÉN ẢNH AN TOÀN CHỐNG TRÀN BỘ NHỚ
+   MODULE ALBUM KỶ NIỆM - TẢI, NÉN ẢNH VÀ ĐỒNG BỘ REALTIME CHUẨN DỮ LIỆU
    ========================================================================== */
 
 let pendingAlbumImages = [];
+let currentOpeningAlbumId = null;
 
-// Hàm nén ảnh tự động bằng Canvas (Chống tràn bộ nhớ LocalStorage 5MB)
+// Hàm nén ảnh siêu gọn (500px, quality 0.5) giúp đẩy Cloud chỉ mất 0.1s
 function compressImage(file, maxWidth, quality, callback) {
-    if (!file) {
-        callback("");
-        return;
-    }
+    if (!file) { callback(""); return; }
     let reader = new FileReader();
     reader.onload = function(e) {
         let img = new Image();
@@ -44,6 +42,17 @@ function isBCSMemberSafe() {
     if (typeof isBCSMember === 'function') return isBCSMember();
     if (typeof isSystemAdmin === 'function') return isSystemAdmin();
     return false;
+}
+
+// Hàm tải ảnh về máy điện thoại / máy tính
+function downloadAlbumPhoto(dataUrl, filename) {
+    if (!dataUrl) return;
+    let a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename || `Anh_Ky_Niem_T132_${Date.now()}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
 }
 
 function renderMemoriesTab() {
@@ -88,8 +97,7 @@ function createNewAlbum() {
     let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
 
     if (file) {
-        // Nén ảnh bìa xuống tối đa 600px để tiết kiệm bộ nhớ
-        compressImage(file, 600, 0.6, function(compressedCover) {
+        compressImage(file, 500, 0.5, function(compressedCover) {
             saveAlbumToStorage(albums, title, date, compressedCover);
         });
     } else {
@@ -106,18 +114,14 @@ function saveAlbumToStorage(albums, title, date, coverData) {
         photos: []
     });
 
-    try {
-        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
-        alert("✨ Đã tạo Album kỷ niệm mới thành công!");
+    localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    alert("✨ Đã tạo Album kỷ niệm mới thành công!");
 
-        if (document.getElementById('album-title-input')) document.getElementById('album-title-input').value = "";
-        if (document.getElementById('album-cover-file')) document.getElementById('album-cover-file').value = "";
-        
-        renderMemoriesTab();
-        if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
-    } catch (e) {
-        alert("⚠️ Bộ nhớ trình duyệt đã đầy! Vui lòng xoá bớt Album cũ.");
-    }
+    if (document.getElementById('album-title-input')) document.getElementById('album-title-input').value = "";
+    if (document.getElementById('album-cover-file')) document.getElementById('album-cover-file').value = "";
+    
+    renderMemoriesTab();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
 
 // 2. Mở Modal Album
@@ -126,6 +130,7 @@ function viewAlbumPhotos(albumId) {
     let album = albums.find(a => a.id === albumId);
     if (!album) return;
 
+    currentOpeningAlbumId = albumId;
     pendingAlbumImages = [];
 
     let modal = document.getElementById('album-detail-modal');
@@ -135,20 +140,28 @@ function viewAlbumPhotos(albumId) {
     modal.style.display = 'block';
 }
 
+function refreshCurrentAlbumModal() {
+    if (!currentOpeningAlbumId) return;
+    let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
+    let album = albums.find(a => a.id === currentOpeningAlbumId);
+    if (album) renderAlbumDetailModalContent(album);
+}
+
 function renderAlbumDetailModalContent(album) {
     let content = document.getElementById('album-detail-content');
     if (!content) return;
 
-    let photosHtml = (album.photos || []).map((img) => `
-        <div style="position:relative; display:inline-block; margin:4px;">
-            <img src="${img}" style="width:85px; height:85px; object-fit:cover; border-radius:8px; border:1px solid #ccc;">
+    let photosHtml = (album.photos || []).map((img, idx) => `
+        <div style="display:inline-block; margin:6px; text-align:center; vertical-align:top; background:#f8fafc; padding:6px; border-radius:8px; border:1px solid #e2e8f0;">
+            <img src="${img}" style="width:90px; height:90px; object-fit:cover; border-radius:6px; border:1px solid #ccc; display:block;">
+            <button type="button" onclick="downloadAlbumPhoto('${img}', 'KyNiem_T132_${idx + 1}.jpg')" class="btn btn-primary" style="font-size:9px; padding:3px 6px; margin-top:4px; width:100%;">📥 Tải về</button>
         </div>
     `).join('');
 
     content.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px dashed var(--border-color); padding-bottom:8px; margin-bottom:10px;">
             <h3 style="color:var(--text-color); margin:0;">📸 ${album.title}</h3>
-            <button type="button" onclick="document.getElementById('album-detail-modal').style.display='none'" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">✕ Đóng</button>
+            <button type="button" onclick="closeAlbumModal()" class="btn btn-danger" style="padding:4px 8px; font-size:11px;">✕ Đóng</button>
         </div>
 
         <p style="font-size:12px; color:#555;">📅 Ngày tạo: ${album.date}</p>
@@ -163,21 +176,26 @@ function renderAlbumDetailModalContent(album) {
         </div>
 
         <h4 style="margin-top:14px; color:var(--text-color);">🖼️ Danh Sách Ảnh Trong Album (${(album.photos || []).length} ảnh):</h4>
-        <div style="margin-top:8px; max-height:220px; overflow-y:auto;">
-            ${photosHtml || "<p style='color:#888; font-size:12px;'>Album này chưa có ảnh. Hãy chọn ảnh phía trên để thêm!</p>"}
+        <div style="margin-top:8px; max-height:240px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:4px;">
+            ${photosHtml || "<p style='color:#888; font-size:12px; width:100%; text-align:center;'>Album này chưa có ảnh. Hãy chọn ảnh phía trên để thêm!</p>"}
         </div>
     `;
 
     renderAlbumPhotosPreview(album.id);
 }
 
-// 3. Chọn từng ảnh một cho Album (Có nén tự động)
+function closeAlbumModal() {
+    currentOpeningAlbumId = null;
+    let modal = document.getElementById('album-detail-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+// 3. Chọn từng ảnh một cho Album (Có nén siêu gọn)
 function addSingleAlbumImage(event, albumId) {
     let file = event.target.files[0];
     if (!file) return;
 
-    // Nén ảnh chi tiết trong album xuống tối đa 700px
-    compressImage(file, 700, 0.65, function(compressedImg) {
+    compressImage(file, 500, 0.5, function(compressedImg) {
         if (compressedImg) {
             pendingAlbumImages.push(compressedImg);
             let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
@@ -217,7 +235,7 @@ function renderAlbumPhotosPreview(albumId) {
     container.innerHTML = html;
 }
 
-// 4. Lưu danh sách ảnh vào Album
+// 4. Lưu danh sách ảnh vào Album & Đẩy Cloud ngay lập tức
 function uploadPhotosToAlbum(albumId) {
     if (pendingAlbumImages.length === 0) {
         alert("⚠️ Vui lòng chọn ít nhất 1 hình ảnh!");
@@ -231,17 +249,13 @@ function uploadPhotosToAlbum(albumId) {
     if (!album.photos) album.photos = [];
     album.photos.unshift(...pendingAlbumImages);
 
-    try {
-        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
-        alert(`📸 Đã tải thêm ${pendingAlbumImages.length} ảnh vào Album thành công!`);
+    localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    alert(`📸 Đã tải thêm ${pendingAlbumImages.length} ảnh vào Album thành công!`);
 
-        pendingAlbumImages = [];
-        viewAlbumPhotos(albumId);
-        renderMemoriesTab();
-        if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
-    } catch (e) {
-        alert("⚠️ Bộ nhớ trình duyệt đã đầy! Hãy nén bớt hoặc xóa bớt ảnh cũ.");
-    }
+    pendingAlbumImages = [];
+    viewAlbumPhotos(albumId);
+    renderMemoriesTab();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
 
 function deleteAlbumToRecycle(albumId) {
@@ -249,9 +263,8 @@ function deleteAlbumToRecycle(albumId) {
     let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
     albums = albums.filter(a => a.id !== albumId);
     
-    try {
-        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
-        renderMemoriesTab();
-        if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
-    } catch (e) {}
+    localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    renderMemoriesTab();
+    if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
+   
