@@ -242,21 +242,3 @@ function applySavedTheme() {
         document.body.classList.add(`theme-${currentUser.theme}`);
     }
 }
- = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    currentUser.theme = themeName;
-    localStorage.setItem('T132_CURRENT_USER', JSON.stringify(currentUser));
-    
-    if (typeof pushLocalDataToCloud === 'function') {
-        pushLocalDataToCloud();
-    }
-
-    alert(`🎨 Đã đổi giao diện sang tông màu: ${themeName.toUpperCase()}`);
-}
-
-function applySavedTheme() {
-    let currentUser = JSON.parse(localStorage.getItem('T132_CURRENT_USER')) || {};
-    if (currentUser.theme && currentUser.theme !== 'default') {
-        document.body.className = '';
-        document.body.classList.add(`theme-${currentUser.theme}`);
-    }
-}

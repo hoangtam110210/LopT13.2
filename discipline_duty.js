@@ -392,7 +392,7 @@ function renderDisciplineDutyTab() {
             let isMinus = daysNum < 0;
 
             return `
-                <div style="background:#fff; border:1px solid ${isMinus ? '#bbf7d0' : '#fca5a5'}; padding:8px 10px; border:1px solid ${isMinus ? '#bbf7d0' : '#fca5a5'}; padding:8px 10px; border-radius:10px; margin-bottom:8px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="background:#fff; border:1px solid ${isMinus ? '#bbf7d0' : '#fca5a5'}; padding:8px 10px; border-radius:10px; margin-bottom:8px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <b style="color:${isMinus ? '#166534' : '#d90429'};">👤 ${v.studentName}</b> - <span style="color:#333;">${v.content}</span>
                         <div style="font-size:10px; color:#666; margin-top:2px;">📅 ${v.date} | Trạng thái: <b style="color:${isMinus ? '#166534' : '#d90429'};">${isMinus ? `${daysNum} ngày LĐ` : `+${daysNum} ngày LĐ`}</b></div>
@@ -702,4 +702,3 @@ function renderWeeklyReportTable() {
         </tr>
     `).join('');
 }
-   
