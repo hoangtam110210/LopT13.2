@@ -4,11 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>T13.2 Hub - Custom Pastel</title>
-    <link rel="stylesheet" href="style.css?v=20">
+    <link rel="stylesheet" href="style.css?v=22">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <!-- KHU VỰC KHÓA BẢO MẬT & ĐĂNG NHẬP (ĐƯỢC ĐIỀU KHIỂN BỞI AUTH.JS) -->
+    <!-- KHU VỰC KHÓA BẢO MẬT & ĐĂNG NHẬP -->
     <div id="auth-modal-body"></div>
 
     <header>
@@ -38,23 +38,7 @@
         <!-- 2. TAB LAO ĐỘNG & BẢNG GHI LỖI -->
         <div id="tab-labor" class="view-section"></div>
 
-        <!-- 3. TAB BẢNG TIN -->
-        <div id="tab-posts" class="view-section">
-            <div class="card">
-                <h3 style="color:var(--text-color);">💬 Đăng Bài Viết Bảng Tin</h3>
-                <textarea id="post-text-input" class="form-control" rows="2" placeholder="Chia sẻ cảm nghĩ, tin tức..."></textarea>
-                
-                <label style="font-size:11px; font-weight:bold; color:var(--text-color);">📷 Chọn Ảnh / Video đính kèm (Bấm chọn từng cái):</label>
-                <input type="file" id="post-files-input" accept="image/*,video/*" onchange="addSinglePostImage(event)" class="form-control" style="font-size:11px;">
-                
-                <div id="post-images-preview-box"></div>
-
-                <button type="button" onclick="submitNewPost(event)" class="btn btn-primary btn-block" style="margin-top:10px;">📤 Đăng Bài Ngay</button>
-            </div>
-            <div id="posts-feed-container"></div>
-        </div>
-
-        <!-- 4. TAB CÔNG VIỆC -->
+        <!-- 3. TAB CÔNG VIỆC -->
         <div id="tab-tasks" class="view-section">
             <div class="card bcs-only">
                 <h3 style="color:var(--text-color);">📌 Ban Cán Sự: Tạo Công Việc Mới</h3>
@@ -74,7 +58,7 @@
             <div id="tasks-container"></div>
         </div>
 
-        <!-- 5. TAB RANDOM -->
+        <!-- 4. TAB RANDOM -->
         <div id="tab-random" class="view-section">
             <div class="card">
                 <h3 style="color:var(--text-color);">🎲 Random Vòng Quay Có Avatar</h3>
@@ -99,12 +83,12 @@
             </details>
         </div>
 
-        <!-- 6. TAB QUỸ LỚP -->
+        <!-- 5. TAB QUỸ LỚP -->
         <div id="tab-fund" class="view-section">
             <div id="fund-container-box"></div>
         </div>
 
-        <!-- 7. TAB ALBUM KỶ NIỆM -->
+        <!-- 6. TAB ALBUM KỶ NIỆM -->
         <div id="tab-memories" class="view-section">
             <div class="card">
                 <h3 style="color:var(--text-color);">📸 Tạo Album Kỷ Niệm Mới</h3>
@@ -117,7 +101,7 @@
             <div id="memories-album-grid"></div>
         </div>
 
-        <!-- 8. TAB THƯ ẨN DANH & KHO TÀI LIỆU -->
+        <!-- 7. TAB THƯ ẨN DANH & KHO TÀI LIỆU -->
         <div id="tab-docs" class="view-section">
             <div class="card">
                 <h3 style="color:var(--text-color);">🔒 Thư Góp Ý Ẩn Danh</h3>
@@ -135,43 +119,75 @@
             </div>
         </div>
 
-        <!-- 9. TAB SẢNH MINIGAMES -->
-        <div id="tab-games" class="view-section">
-            <div class="card" style="text-align:center;">
-                <h3 style="color:var(--text-color);">🎮 Sảnh Mini Games</h3>
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button type="button" onclick="openMiniGameSection('xo')" class="btn btn-primary" style="flex:1;">❌⭕ Cờ XO</button>
-                    <button type="button" onclick="openMiniGameSection('chess')" class="btn btn-primary" style="flex:1;">♟ Cờ Vua</button>
-                    <button type="button" onclick="openMiniGameSection('werewolf')" class="btn btn-primary" style="flex:1;">🐺 Ma Sói</button>
-                </div>
-            </div>
-
-            <div id="game-panel-xo" class="card" style="display:none; text-align:center;">
-                <h4>❌⭕ Cờ Caro XO</h4>
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button type="button" onclick="triggerRandomMatchmaking('Cờ XO')" class="btn btn-warning" style="flex:1;">🎲 Ghép Cặp Ngẫu Nhiên</button>
-                    <button type="button" onclick="openInvitePlayerModal('Cờ XO')" class="btn btn-primary" style="flex:1;">✉ Mời Người Chơi Online</button>
-                </div>
-            </div>
-
-            <div id="game-panel-chess" class="card" style="display:none; text-align:center;">
-                <h4>♟ Cờ Vua Quốc Tế</h4>
-                <div style="display:flex; gap:6px; margin-top:8px;">
-                    <button type="button" onclick="triggerRandomMatchmaking('Cờ Vua')" class="btn btn-warning" style="flex:1;">🎲 Ghép Cặp Ngẫu Nhiên</button>
-                    <button type="button" onclick="openInvitePlayerModal('Cờ Vua')" class="btn btn-primary" style="flex:1;">✉️ Mời Người Chơi Online</button>
-                </div>
-            </div>
-
-            <div id="game-panel-werewolf" class="card" style="display:none; text-align:center;">
-                <h4>🐺 Ma Sói Realtime</h4>
-            </div>
-        </div>
-
-        <!-- 10. TAB TRANG CÁ NHÂN -->
+        <!-- 8. TAB TRANG CÁ NHÂN -->
         <div id="tab-profile" class="view-section">
             <div class="card" style="text-align:center;">
                 <h3>👤 Trang Cá Nhân</h3>
                 <img id="profile-avatar-preview" src="" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid var(--primary-color); margin-top:8px;">
+                <input type="file" id="profile-avatar-input" accept="image/*" onchange="previewProfileAvatar(event)" style="font-size:11px; margin-top:6px;">
+
+                <div style="margin-top:10px; text-align:left;">
+                    <label style="font-size:11px; font-weight:bold;">Tên thật:</label>
+                    <input type="text" id="profile-name-input" class="form-control" readonly style="background:#f0f0f0;">
+
+                    <label style="font-size:11px; font-weight:bold;">Biệt danh (Nickname):</label>
+                    <input type="text" id="profile-nickname-input" class="form-control" placeholder="Nhập biệt danh...">
+
+                    <label style="font-size:11px; font-weight:bold;">Giới thiệu bản thân (Bio):</label>
+                    <textarea id="profile-bio-input" class="form-control" rows="2" placeholder="Ghi vài dòng giới thiệu..."></textarea>
+
+                    <button type="button" onclick="saveUserProfileInfo()" class="btn btn-primary btn-block" style="margin-top:6px;">💾 Lưu Thông Tin Cá Nhân</button>
+                </div>
+
+                <div style="margin-top:14px; text-align:left;">
+                    <label style="font-size:12px; font-weight:bold;">🎨 Tông màu giao diện:</label>
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:4px;">
+                        <button type="button" onclick="changeUserTheme('default')" class="btn btn-primary" style="font-size:10px;">🌱 Cỏ 4 Lá</button>
+                        <button type="button" onclick="changeUserTheme('blue')" class="btn" style="background:#48cae4; color:#fff; font-size:10px;">🌊 Biển Cả</button>
+                        <button type="button" onclick="changeUserTheme('lavender')" class="btn" style="background:#a855f7; color:#fff; font-size:10px;">🔮 Mơ Mộng</button>
+                        <button type="button" onclick="changeUserTheme('coral')" class="btn" style="background:#ff758f; color:#fff; font-size:10px;">🌅 Hoàng Hôn</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS OVERLAY -->
+    <div id="album-detail-modal" class="card" style="display:none; position:fixed; top:5%; left:5%; right:5%; bottom:5%; z-index:200; overflow-y:auto; background:#fff; border:3px solid var(--primary-color);">
+        <div id="album-detail-content"></div>
+    </div>
+
+    <!-- THANH NAV MENU DƯỚI -->
+    <nav>
+        <button type="button" onclick="switchTab('tab-home')" class="active">📊 Trang chủ</button>
+        <button type="button" onclick="switchTab('tab-labor')">🧹 Lao động</button>
+        <button type="button" onclick="switchTab('tab-tasks')">📌 Công việc</button>
+        <button type="button" onclick="switchTab('tab-random')">🎲 Random</button>
+        <button type="button" onclick="switchTab('tab-fund')">💰 Quỹ lớp</button>
+        <button type="button" onclick="switchTab('tab-memories')">📸 Kỷ niệm</button>
+        <button type="button" onclick="switchTab('tab-docs')">📁 Tài liệu</button>
+        <button type="button" onclick="switchTab('tab-profile')">👤 Cá nhân</button>
+    </nav>
+
+    <!-- THƯ VIỆN BÊN NGOÀI -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+    <!-- CÁC FILE CHỨC NĂNG NỘI BỘ DỰ ÁN -->
+    <script src="data.js"></script>
+    <script src="sync-cloud.js"></script>
+    <script src="app.js"></script>
+    <script src="auth.js"></script>
+    <script src="discipline_duty.js"></script>
+    <script src="profile.js"></script>
+    <script src="random.js"></script>
+    <script src="tasks.js"></script>
+    <script src="fund_score.js"></script>
+    <script src="memories.js"></script>
+    <script src="feedback_docs.js"></script>
+</body>
+</html>
+s:50%; object-fit:cover; border:3px solid var(--primary-color); margin-top:8px;">
                 <input type="file" id="profile-avatar-input" accept="image/*" onchange="previewProfileAvatar(event)" style="font-size:11px; margin-top:6px;">
 
                 <div style="margin-top:10px; text-align:left;">
