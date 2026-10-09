@@ -162,12 +162,20 @@ function renderDisciplineDutyTab() {
 
     let scheduleHtml = "";
 
+    // NÚT XUẤT FILE PHÂN CÔNG LAO ĐỘNG
+    let exportButtonsHtml = `
+        <div style="display:flex; gap:6px;">
+            <button type="button" onclick="exportLaborScheduleFile('excel')" class="btn btn-primary" style="font-size:10px; padding:3px 8px;">📊 Xuất Excel (.csv)</button>
+            <button type="button" onclick="exportLaborScheduleFile('doc')" class="btn btn-warning" style="font-size:10px; padding:3px 8px;">📄 Tải Word (.doc)</button>
+        </div>
+    `;
+
     // 1. PHÂN CÔNG LAO ĐỘNG (CHỈ HỌC SINH CÓ QUYỀN MỚI THẤY FORM SỬA)
     if (isLaborAdmin) {
         let inputsHtml = LABOR_DAYS_MAP.map(d => {
             let assignedList = schedule[d.label] || [];
             let checkboxesHtml = sortedStudentsForAssign.map(name => {
-                let isChecked = assignedList.includes(name) ? 'checked' : '';
+                let isChecked = Array.isArray(assignedList) && assignedList.includes(name) ? 'checked' : '';
                 let bal = penaltyBalanceMap[name] || 0;
                 let badgeHtml = bal > 0 ? `<b style="color:#dc2626; font-size:9px;">🔥 Nợ ${bal} ngày</b>` : '';
 
@@ -190,7 +198,10 @@ function renderDisciplineDutyTab() {
 
         scheduleHtml = `
             <div class="card" style="margin-bottom:12px;">
-                <h3 style="color:var(--text-color);">🧹 Lớp Phó Lao Động: Phân Công Trực Nhật</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+                    <h3 style="color:var(--text-color); margin:0;">🧹 Phân Công Trực Nhật (Tuần ${currentWeekNum})</h3>
+                    ${exportButtonsHtml}
+                </div>
                 <p style="font-size:10px; color:#dc2626; font-weight:bold; margin-bottom:6px;">🔥 Danh sách tự động ưu tiên học sinh nợ lao động cao lên đầu:</p>
                 ${inputsHtml}
                 <button onclick="saveLaborSchedule()" class="btn btn-primary btn-block" style="margin-top:6px; font-size:11px;">💾 Lưu Bảng Phân Công</button>
@@ -200,17 +211,21 @@ function renderDisciplineDutyTab() {
         // HỌC SINH THƯỜNG CHỈ THẤY BẢNG XEM LỊCH (READ-ONLY)
         let rowsHtml = LABOR_DAYS_MAP.map(d => {
             let list = schedule[d.label] || [];
+            let nameStr = Array.isArray(list) ? list.join(', ') : (list || 'Chưa phân công');
             return `
                 <tr style="border-bottom:1px solid #eee;">
                     <td style="padding:6px; font-weight:bold; color:var(--primary-color); font-size:11px; width:70px;">${d.label}</td>
-                    <td style="padding:6px; font-size:11px; color:#333;">${list.length > 0 ? list.join(', ') : 'Chưa phân công'}</td>
+                    <td style="padding:6px; font-size:11px; color:#333;">${nameStr || 'Chưa phân công'}</td>
                 </tr>
             `;
         }).join('');
 
         scheduleHtml = `
             <div class="card" style="margin-bottom:12px;">
-                <h3 style="color:var(--text-color);">📋 Lịch Trực Nhật Trong Tuần</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
+                    <h3 style="color:var(--text-color); margin:0;">📋 Lịch Trực Nhật Trong Tuần ${currentWeekNum}</h3>
+                    ${exportButtonsHtml}
+                </div>
                 <table style="width:100%; border-collapse:collapse; text-align:left;">
                     <tbody>${rowsHtml}</tbody>
                 </table>
@@ -218,10 +233,11 @@ function renderDisciplineDutyTab() {
         `;
     }
 
-    // 2. ĐIỂM DANH TRỰC NHẬT HÔM NAY (HỌC SINH THƯỜNG KHÔNG BẤM ĐƯỢC CHECKBOX)
+    // 2. ĐIỂM DANH TRỰC NHẬT HÔM NAY
     let todayIndex = new Date().getDay(); 
     let dayMapName = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"][todayIndex];
     let todayAssignedStudents = schedule[dayMapName] || [];
+    if (!Array.isArray(todayAssignedStudents)) todayAssignedStudents = [];
 
     let dutyRowsHtml = "";
     if (todayAssignedStudents.length === 0) {
@@ -324,7 +340,7 @@ function renderDisciplineDutyTab() {
         </div>
     `;
 
-    // 4. FORM GHI NHẬN LỖI & CỘNG TRỪ THỦ CÔNG (ẨN HOÀN TOÀN ĐỐI VỚI HỌC SINH THƯỜNG)
+    // 4. FORM GHI NHẬN LỖI & CỘNG TRỪ THỦ CÔNG (ẨN DÀNH CHO HỌC SINH THƯỜNG)
     let logFormHtml = "";
     if (isLaborAdmin) {
         let studentOptions = studentNames.map(name => `<option value="${name}">${name}</option>`).join('');
@@ -376,7 +392,7 @@ function renderDisciplineDutyTab() {
             let isMinus = daysNum < 0;
 
             return `
-                <div style="background:#fff; border:1px solid ${isMinus ? '#bbf7d0' : '#fca5a5'}; padding:8px 10px; border-radius:10px; margin-bottom:8px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="background:#fff; border:1px solid ${isMinus ? '#bbf7d0' : '#fca5a5'}; padding:8px 10px; border:1px solid ${isMinus ? '#bbf7d0' : '#fca5a5'}; padding:8px 10px; border-radius:10px; margin-bottom:8px; font-size:11px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <b style="color:${isMinus ? '#166534' : '#d90429'};">👤 ${v.studentName}</b> - <span style="color:#333;">${v.content}</span>
                         <div style="font-size:10px; color:#666; margin-top:2px;">📅 ${v.date} | Trạng thái: <b style="color:${isMinus ? '#166534' : '#d90429'};">${isMinus ? `${daysNum} ngày LĐ` : `+${daysNum} ngày LĐ`}</b></div>
@@ -399,6 +415,67 @@ function renderDisciplineDutyTab() {
 
     renderWeeklyReportTable();
     if (typeof renderDashboardCharts === 'function') renderDashboardCharts();
+}
+
+/* --------------------------------------------------------------------------
+   HÀM XUẤT FILE PHÂN CÔNG LAO ĐỘNG (EXCEL & WORD CHUẨN UNICODE)
+   -------------------------------------------------------------------------- */
+function exportLaborScheduleFile(format) {
+    let schedule = {};
+    try { schedule = JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || {}; } catch(e) {}
+    let currentWeek = getCurrentWeekIndex();
+    let days = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+
+    if (format === 'excel') {
+        let csvContent = "\uFEFF"; // Thêm BOM UTF-8 để chống lỗi font Tiếng Việt
+        csvContent += `BẢNG PHÂN CÔNG LAO ĐỘNG TẬP THỂ LỚP T13.2 - TUẦN ${currentWeek}\n\n`;
+        csvContent += "Thứ,Học Sinh Trực Nhật Phụ Trách\n";
+
+        days.forEach(day => {
+            let list = schedule[day] || [];
+            let nameStr = Array.isArray(list) ? list.join('; ') : (list || "Chưa phân công");
+            csvContent += `"${day}","${nameStr}"\n`;
+        });
+
+        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `Phan_Cong_Lao_Dong_T132_Tuan_${currentWeek}.csv`;
+        link.click();
+
+    } else if (format === 'doc') {
+        let htmlContent = `
+            <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+            <head><meta charset='utf-8'><title>Phân công lao động</title></head>
+            <body style="font-family:Arial, sans-serif; padding:20px;">
+                <h2 style="text-align:center; color:#2e7d32;">BẢNG PHÂN CÔNG LAO ĐỘNG - LỚP T13.2</h2>
+                <p style="text-align:center; font-weight:bold;">Áp dụng: Tuần ${currentWeek}</p>
+                <table border="1" cellspacing="0" cellpadding="8" style="width:100%; border-collapse:collapse; margin-top:15px;">
+                    <tr style="background-color:#88c999; color:white; font-weight:bold;">
+                        <th style="width:30%;">Thứ</th>
+                        <th>Học Sinh Phụ Trách Trực Nhật</th>
+                    </tr>
+                    ${days.map(day => {
+                        let list = schedule[day] || [];
+                        let nameStr = Array.isArray(list) ? list.join(', ') : (list || 'Chưa phân công');
+                        return `
+                            <tr>
+                                <td><b>${day}</b></td>
+                                <td>${nameStr}</td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </table>
+            </body>
+            </html>
+        `;
+
+        let blob = new Blob(['\ufeff' + htmlContent], { type: 'application/msword' });
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `Phan_Cong_Lao_Dong_T132_Tuan_${currentWeek}.doc`;
+        link.click();
+    }
 }
 
 /* --------------------------------------------------------------------------
@@ -625,3 +702,4 @@ function renderWeeklyReportTable() {
         </tr>
     `).join('');
 }
+   
