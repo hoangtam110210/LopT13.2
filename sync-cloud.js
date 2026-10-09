@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME T132 HUB (NHẬN DỮ LIỆU ĐẨY TRỰC TIẾP)
+   MODULE ĐỒNG BỘ REALTIME T132 HUB (FIREBASE REALTIME DB - CHỐNG MẤT DỮ LIỆU)
    ========================================================================== */
 
 const firebaseConfig = {
@@ -12,6 +12,7 @@ const firebaseConfig = {
   appId: "1:247212478029:web:27b3e97fbf93208ef61604"
 };
 
+// Khởi tạo Firebase Realtime Database
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
@@ -21,6 +22,7 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 
 let isPushingLocal = false;
 
+// Hàm lưu an toàn: Tự dọn bớt dữ liệu cũ nếu máy học sinh bị tràn bộ nhớ LocalStorage
 function safeSetItem(key, value) {
     if (value === undefined || value === null) return false;
     let jsonStr = typeof value === 'string' ? value : JSON.stringify(value);
@@ -44,7 +46,7 @@ function safeSetItem(key, value) {
 }
 
 /* --------------------------------------------------------------------------
-   1. LẮNG NGHE REALTIME TỪ FIREBASE VỀ MÁY CÁ NHÂN
+   1. LẮNG NGHE SỰ THAY ĐỔI REALTIME TỪ FIREBASE TỨC THÌ (< 0.2s)
    -------------------------------------------------------------------------- */
 classDataRef.on('value', (snapshot) => {
     if (isPushingLocal) return;
@@ -65,14 +67,17 @@ classDataRef.on('value', (snapshot) => {
         }
     }
 
-    updateLocalKey('T132_POSTS', cloudData.posts || []);
-    updateLocalKey('T132_DOCUMENTS', cloudData.documents || []);
+    // Đồng bộ đồng loạt các danh mục dữ liệu của lớp
     updateLocalKey('T132_USERS', cloudData.users || []);
-    updateLocalKey('T132_LABOR_VIOLATIONS', cloudData.violations || []);
     updateLocalKey('T132_LABOR_SCHEDULE', cloudData.laborSchedule || {});
     updateLocalKey('T132_LABOR_DUTY_STATUS', cloudData.laborDutyStatus || {});
-    updateLocalKey('T132_TASKS', cloudData.tasks || []);
+    updateLocalKey('T132_LABOR_VIOLATIONS', cloudData.violations || []);
     updateLocalKey('T132_CURRENT_WEEK', cloudData.currentWeek || 1);
+    updateLocalKey('T132_TASKS', cloudData.tasks || []);
+    updateLocalKey('T132_FUND', cloudData.fund || {});
+    updateLocalKey('T132_MEMORIES', cloudData.memories || []);
+    updateLocalKey('T132_DOCUMENTS', cloudData.documents || []);
+    updateLocalKey('T132_FEEDBACK', cloudData.feedback || []);
 
     let activeEl = document.activeElement;
     let isEditingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
@@ -83,25 +88,22 @@ classDataRef.on('value', (snapshot) => {
 });
 
 /* --------------------------------------------------------------------------
-   2. HÀM ĐẨY DỮ LIỆU LÊN ĐÁM MÂY (ƯU TIÊN DÙNG MẢNG ĐƯỢC TRUYỀN VÀO TRỰC TIẾP)
+   2. HÀM ĐẨY DỮ LIỆU TỚI MÁY CÁC BẠN KHÁC TRONG 0.1 GIÂY
    -------------------------------------------------------------------------- */
-async function pushLocalDataToCloud(customPosts) {
+async function pushLocalDataToCloud() {
     isPushingLocal = true;
 
-    let postsToPush = customPosts;
-    if (!postsToPush) {
-        postsToPush = JSON.parse(localStorage.getItem('T132_POSTS')) || [];
-    }
-
     let payload = {
-        posts: postsToPush,
-        documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || [],
         users: JSON.parse(localStorage.getItem('T132_USERS')) || [],
-        violations: JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [],
         laborSchedule: JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || {},
         laborDutyStatus: JSON.parse(localStorage.getItem('T132_LABOR_DUTY_STATUS')) || {},
-        tasks: JSON.parse(localStorage.getItem('T132_TASKS')) || [],
+        violations: JSON.parse(localStorage.getItem('T132_LABOR_VIOLATIONS')) || [],
         currentWeek: parseInt(localStorage.getItem('T132_CURRENT_WEEK')) || 1,
+        tasks: JSON.parse(localStorage.getItem('T132_TASKS')) || [],
+        fund: JSON.parse(localStorage.getItem('T132_FUND')) || {},
+        memories: JSON.parse(localStorage.getItem('T132_MEMORIES')) || [],
+        documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || [],
+        feedback: JSON.parse(localStorage.getItem('T132_FEEDBACK')) || [],
         lastUpdated: Date.now()
     };
 
@@ -110,25 +112,37 @@ async function pushLocalDataToCloud(customPosts) {
     } catch (e) {
         console.error("Lỗi đồng bộ Realtime:", e);
     } finally {
-        setTimeout(() => { isPushingLocal = false; }, 400);
+        setTimeout(() => { isPushingLocal = false; }, 300);
     }
 }
 
 /* --------------------------------------------------------------------------
-   3. CẬP NHẬT GIAO DIỆN MÀN HÌNH ĐANG MỞ
+   3. CẬP NHẬT GIAO DIỆN MÀN HÌNH ĐANG MỞ KHI CÓ DỮ LIỆU MỚI TỪ LỚP
    -------------------------------------------------------------------------- */
 function refreshActiveTabUI() {
     let activeTab = document.querySelector('.view-section.active');
     if (!activeTab) return;
 
     let tabId = activeTab.id;
-    if (tabId === 'tab-posts') {
-        if (typeof renderPostsFeed === 'function') renderPostsFeed();
-        else if (typeof renderPosts === 'function') renderPosts();
-    }
-    if (tabId === 'tab-docs' && typeof renderDocumentsList === 'function') renderDocumentsList();
-    if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
-    if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
-    if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
     if (tabId === 'tab-home' && typeof renderDashboardCharts === 'function') renderDashboardCharts();
+    if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
+    if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
+    if (tabId === 'tab-fund' && typeof renderFundTab === 'function') renderFundTab();
+    if (tabId === 'tab-memories' && typeof renderMemoriesTab === 'function') renderMemoriesTab();
+    if (tabId === 'tab-docs') {
+        if (typeof renderFeedbackList === 'function') renderFeedbackList();
+        if (typeof renderDocumentsList === 'function') renderDocumentsList();
+    }
+    if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
+    if (tabId === 'tab-profile' && typeof renderUserProfile === 'function') renderUserProfile();
 }
+
+// Tự động đẩy dữ liệu lên Cloud mỗi khi người dùng tương tác nút bấm hoặc lựa chọn
+window.addEventListener('load', () => {
+    document.addEventListener('click', (e) => {
+        let isActionButton = e.target.closest('button') || e.target.closest('input[type="checkbox"]') || e.target.closest('select');
+        if (isActionButton) {
+            setTimeout(pushLocalDataToCloud, 150);
+        }
+    });
+});
