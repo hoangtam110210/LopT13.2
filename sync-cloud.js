@@ -1,5 +1,5 @@
 /* ==========================================================================
-   MODULE ĐỒNG BỘ REALTIME CHỐNG GHI ĐÈ & HỖ TRỢ ẢNH FULL HD (SYNC-CLOUD.JS)
+   MODULE ĐỒNG BỘ REALTIME T132 HUB - CHỐNG GHI ĐÈ KỶ NIỆM TRIỆT ĐỂ
    ========================================================================== */
 
 const firebaseConfig = {
@@ -21,29 +21,18 @@ const classDataRef = db.ref('T132_CLASS_DATA');
 
 let isPushingLocal = false;
 
-// 1. LẮNG NGHE DỮ LIỆU TỪ CLOUD VỀ MÁY
+// 1. LẮNG NGHE TOÀN BỘ DỮ LIỆU CHUNG (Trừ Kỷ niệm)
 classDataRef.on('value', (snapshot) => {
     if (isPushingLocal) return;
 
     let cloudData = snapshot.val();
     if (!cloudData) return;
 
-    let hasRealChange = false;
-
     function updateLocalKey(key, cloudValue) {
         if (cloudValue === undefined || cloudValue === null) return;
-        let currentStr = localStorage.getItem(key) || '';
-        let newStr = JSON.stringify(cloudValue);
-
-        if (currentStr !== newStr) {
-            try {
-                localStorage.setItem(key, newStr);
-            } catch (e) {
-                // Nếu LocalStorage máy bị đầy ảnh HD, vẫn giữ dữ liệu trong bộ nhớ đệm
-                window[key + '_TEMP'] = cloudValue;
-            }
-            hasRealChange = true;
-        }
+        try {
+            localStorage.setItem(key, JSON.stringify(cloudValue));
+        } catch (e) {}
     }
 
     updateLocalKey('T132_USERS', cloudData.users);
@@ -53,36 +42,67 @@ classDataRef.on('value', (snapshot) => {
     updateLocalKey('T132_CURRENT_WEEK', cloudData.currentWeek);
     updateLocalKey('T132_TASKS', cloudData.tasks);
     updateLocalKey('T132_FUND', cloudData.fund);
-    updateLocalKey('T132_MEMORIES', cloudData.memories); // Album Kỷ niệm
     updateLocalKey('T132_DOCUMENTS', cloudData.documents);
     updateLocalKey('T132_FEEDBACK', cloudData.feedback);
 
-    if (hasRealChange) {
-        refreshActiveTabUI();
+    refreshActiveTabUI();
+});
+
+// 2. LẮNG NGHE RIÊNG NHÁNH KỶ NIỆM (Tự động gộp tất cả Album từ mọi tài khoản)
+classDataRef.child('memories').on('value', (snapshot) => {
+    let memoriesObj = snapshot.val() || {};
+    let memoriesArr = [];
+
+    // Chuyển Object từ Firebase thành Array
+    if (Array.isArray(memoriesObj)) {
+        memoriesArr = memoriesObj.filter(item => item !== null && item !== undefined);
+    } else if (typeof memoriesObj === 'object') {
+        memoriesArr = Object.values(memoriesObj);
+    }
+
+    // Sắp xếp Album mới nhất lên đầu
+    memoriesArr.sort((a, b) => (b.id || 0) - (a.id || 0));
+
+    window['T132_MEMORIES_TEMP'] = memoriesArr;
+    try {
+        localStorage.setItem('T132_MEMORIES', JSON.stringify(memoriesArr));
+    } catch (e) {}
+
+    // Vẽ lại giao diện Tab Kỷ niệm ngay lập tức
+    let activeTab = document.querySelector('.view-section.active');
+    if (activeTab && activeTab.id === 'tab-memories') {
+        if (typeof renderMemoriesTab === 'function') renderMemoriesTab();
+        if (typeof refreshCurrentAlbumModal === 'function') refreshCurrentAlbumModal();
     }
 });
 
-// 2. HÀM ĐẨY RIÊNG ALBUM KỶ NIỆM THẲNG LÊN FIREBASE (KHÔNG PHỤ THUỘ LOCALSTORAGE)
-async function syncMemoriesDirectlyToCloud(memoriesData) {
-    isPushingLocal = true;
+// 3. HÀM CẬP NHẬT TỪNG ALBUM RIÊNG LÊN CLOUD (CHỐNG MẤT DỮ LIỆU)
+async function saveAlbumToCloudNode(albumObj) {
+    if (!albumObj || !albumObj.id) return;
     try {
-        await classDataRef.child('memories').set(memoriesData);
-        console.log("✅ [Firebase] Đã đồng bộ Album Kỷ niệm thành công!");
+        await classDataRef.child('memories').child(albumObj.id).set(albumObj);
+        console.log(`✅ [Cloud] Đã lưu Album "${albumObj.title}" lên Firebase!`);
     } catch (err) {
-        alert("❌ Lỗi đồng bộ Firebase: " + err.message);
-    } finally {
-        setTimeout(() => { isPushingLocal = false; }, 600);
+        alert("❌ Lỗi đồng bộ Album: " + err.message);
     }
 }
 
-// 3. ĐẨY DỮ LIỆU TỔNG THỂ
+async function removeAlbumFromCloudNode(albumId) {
+    if (!albumId) return;
+    try {
+        await classDataRef.child('memories').child(albumId).remove();
+        console.log(`🗑️ [Cloud] Đã xóa Album ID ${albumId} trên Firebase!`);
+    } catch (err) {
+        alert("❌ Lỗi xóa Album: " + err.message);
+    }
+}
+
+// 4. ĐẨY DỮ LIỆU CÁC TÍNH NĂNG KHÁC (Không chạm vào nhánh memories)
 async function pushLocalDataToCloud() {
     if (isPushingLocal) return;
     isPushingLocal = true;
 
     try {
-        let memoriesData = JSON.parse(localStorage.getItem('T132_MEMORIES')) || window['T132_MEMORIES_TEMP'] || [];
-
         await classDataRef.update({
             users: JSON.parse(localStorage.getItem('T132_USERS')) || [],
             laborSchedule: JSON.parse(localStorage.getItem('T132_LABOR_SCHEDULE')) || {},
@@ -91,7 +111,6 @@ async function pushLocalDataToCloud() {
             currentWeek: parseInt(localStorage.getItem('T132_CURRENT_WEEK')) || 1,
             tasks: JSON.parse(localStorage.getItem('T132_TASKS')) || [],
             fund: JSON.parse(localStorage.getItem('T132_FUND')) || {},
-            memories: memoriesData,
             documents: JSON.parse(localStorage.getItem('T132_DOCUMENTS')) || [],
             feedback: JSON.parse(localStorage.getItem('T132_FEEDBACK')) || [],
             lastUpdated: Date.now()
@@ -112,14 +131,10 @@ function refreshActiveTabUI() {
     if (tabId === 'tab-labor' && typeof renderDisciplineDutyTab === 'function') renderDisciplineDutyTab();
     if (tabId === 'tab-tasks' && typeof renderTasks === 'function') renderTasks();
     if (tabId === 'tab-fund' && typeof renderFundTab === 'function') renderFundTab();
-    if (tabId === 'tab-memories') {
-        if (typeof renderMemoriesTab === 'function') renderMemoriesTab();
-        if (typeof refreshCurrentAlbumModal === 'function') refreshCurrentAlbumModal();
-    }
     if (tabId === 'tab-docs') {
         if (typeof renderFeedbackList === 'function') renderFeedbackList();
         if (typeof renderDocumentsList === 'function') renderDocumentsList();
     }
     if (tabId === 'tab-random' && typeof renderRandomModule === 'function') renderRandomModule();
     if (tabId === 'tab-profile' && typeof renderUserProfile === 'function') renderUserProfile();
-       }
+}
