@@ -1,18 +1,30 @@
 /* ==========================================================================
-   MODULE ALBUM KỶ NIỆM - TẢI, NÉN ẢNH VÀ ĐỒNG BỘ REALTIME CHUẨN DỮ LIỆU
+   MODULE ALBUM KỶ NIỆM - GIỮ ẢNH NÉT FULL HD (1920PX) & TẢI ẢNH CHẤT LƯỢNG CAO
    ========================================================================== */
 
 let pendingAlbumImages = [];
 let currentOpeningAlbumId = null;
 
-// Hàm nén ảnh siêu gọn (500px, quality 0.5) giúp đẩy Cloud chỉ mất 0.1s
-function compressImage(file, maxWidth, quality, callback) {
+// Hàm xử lý ảnh chất lượng cao (Full HD 1920px - 90% Quality)
+function processHighQualityImage(file, callback) {
     if (!file) { callback(""); return; }
+
+    // Nếu ảnh nhỏ sẵn (dưới 800KB), giữ nguyên 100% gốc không nén
+    if (file.size <= 800 * 1024) {
+        let reader = new FileReader();
+        reader.onload = function(e) { callback(e.target.result); };
+        reader.onerror = function() { callback(""); };
+        reader.readAsDataURL(file);
+        return;
+    }
+
+    // Với ảnh lớn (3MB - 12MB), đưa về chuẩn Full HD 1920px nét căng
     let reader = new FileReader();
     reader.onload = function(e) {
         let img = new Image();
         img.onload = function() {
             let canvas = document.createElement('canvas');
+            let maxWidth = 1920; // Chuẩn Full HD
             let w = img.width;
             let h = img.height;
 
@@ -27,8 +39,9 @@ function compressImage(file, maxWidth, quality, callback) {
             let ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, w, h);
 
-            let compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
-            callback(compressedDataUrl);
+            // Giữ chất lượng 0.9 (90% nét)
+            let highQualityDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            callback(highQualityDataUrl);
         };
         img.onerror = function() { callback(""); };
         img.src = e.target.result;
@@ -44,7 +57,7 @@ function isBCSMemberSafe() {
     return false;
 }
 
-// Hàm tải ảnh về máy điện thoại / máy tính
+// Hàm tải ảnh nét về máy
 function downloadAlbumPhoto(dataUrl, filename) {
     if (!dataUrl) return;
     let a = document.createElement('a');
@@ -65,7 +78,7 @@ function renderMemoriesTab() {
 
     let html = albums.map(a => `
         <div class="card" style="margin-bottom:12px;">
-            <img src="${a.cover || defaultAvatar}" style="width:100%; height:160px; object-fit:cover; border-radius:12px; background:#e2e8f0;">
+            <img src="${a.cover || defaultAvatar}" style="width:100%; height:180px; object-fit:cover; border-radius:12px; background:#e2e8f0;">
             <h4 style="margin-top:8px; color:var(--text-color);">📸 ${a.title}</h4>
             <small style="color:#777;">📅 Ngày tạo: ${a.date} | (${(a.photos || []).length} ảnh)</small>
 
@@ -79,7 +92,7 @@ function renderMemoriesTab() {
     container.innerHTML = html || "<p style='color:#777; font-size:12px;'>Chưa có Album kỷ niệm nào. Hãy điền tên và tạo Album đầu tiên!</p>";
 }
 
-// 1. Tạo Album mới (Có nén ảnh bìa)
+// 1. Tạo Album mới
 function createNewAlbum() {
     let titleInput = document.getElementById('album-title-input');
     let dateInput = document.getElementById('album-date-input');
@@ -97,8 +110,8 @@ function createNewAlbum() {
     let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
 
     if (file) {
-        compressImage(file, 500, 0.5, function(compressedCover) {
-            saveAlbumToStorage(albums, title, date, compressedCover);
+        processHighQualityImage(file, function(hdCover) {
+            saveAlbumToStorage(albums, title, date, hdCover);
         });
     } else {
         saveAlbumToStorage(albums, title, date, "");
@@ -114,7 +127,12 @@ function saveAlbumToStorage(albums, title, date, coverData) {
         photos: []
     });
 
-    localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    try {
+        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    } catch (e) {
+        console.warn("Bộ nhớ máy đầy, ưu tiên đẩy trực tiếp lên Cloud");
+    }
+
     alert("✨ Đã tạo Album kỷ niệm mới thành công!");
 
     if (document.getElementById('album-title-input')) document.getElementById('album-title-input').value = "";
@@ -152,9 +170,9 @@ function renderAlbumDetailModalContent(album) {
     if (!content) return;
 
     let photosHtml = (album.photos || []).map((img, idx) => `
-        <div style="display:inline-block; margin:6px; text-align:center; vertical-align:top; background:#f8fafc; padding:6px; border-radius:8px; border:1px solid #e2e8f0;">
-            <img src="${img}" style="width:90px; height:90px; object-fit:cover; border-radius:6px; border:1px solid #ccc; display:block;">
-            <button type="button" onclick="downloadAlbumPhoto('${img}', 'KyNiem_T132_${idx + 1}.jpg')" class="btn btn-primary" style="font-size:9px; padding:3px 6px; margin-top:4px; width:100%;">📥 Tải về</button>
+        <div style="display:inline-block; margin:6px; text-align:center; vertical-align:top; background:#ffffff; padding:6px; border-radius:8px; border:1px solid #e2e8f0; box-shadow:0 2px 4px rgba(0,0,0,0.05);">
+            <img src="${img}" style="width:100px; height:100px; object-fit:cover; border-radius:6px; border:1px solid #ccc; display:block;">
+            <button type="button" onclick="downloadAlbumPhoto('${img}', '${album.title}_Anh_${idx + 1}.jpg')" class="btn btn-primary" style="font-size:10px; padding:4px 6px; margin-top:6px; width:100%;">📥 Tải về (Nét)</button>
         </div>
     `).join('');
 
@@ -167,7 +185,7 @@ function renderAlbumDetailModalContent(album) {
         <p style="font-size:12px; color:#555;">📅 Ngày tạo: ${album.date}</p>
 
         <div style="margin-top:10px; background:#fafafa; padding:10px; border-radius:12px; border:1px dashed var(--border-color);">
-            <label style="font-size:12px; font-weight:bold; color:var(--text-color);">➕ Chọn từng ảnh để thêm vào Album này:</label>
+            <label style="font-size:12px; font-weight:bold; color:var(--text-color);">➕ Chọn ảnh sắc nét để thêm vào Album này:</label>
             <input type="file" accept="image/*" onchange="addSingleAlbumImage(event, ${album.id})" class="form-control" style="font-size:11px; margin-top:4px;">
             
             <div id="album-photos-preview-box" style="margin-top:6px;"></div>
@@ -176,7 +194,7 @@ function renderAlbumDetailModalContent(album) {
         </div>
 
         <h4 style="margin-top:14px; color:var(--text-color);">🖼️ Danh Sách Ảnh Trong Album (${(album.photos || []).length} ảnh):</h4>
-        <div style="margin-top:8px; max-height:240px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:4px;">
+        <div style="margin-top:8px; max-height:260px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:4px;">
             ${photosHtml || "<p style='color:#888; font-size:12px; width:100%; text-align:center;'>Album này chưa có ảnh. Hãy chọn ảnh phía trên để thêm!</p>"}
         </div>
     `;
@@ -190,14 +208,14 @@ function closeAlbumModal() {
     if (modal) modal.style.display = 'none';
 }
 
-// 3. Chọn từng ảnh một cho Album (Có nén siêu gọn)
+// 3. Chọn ảnh Full HD cho Album
 function addSingleAlbumImage(event, albumId) {
     let file = event.target.files[0];
     if (!file) return;
 
-    compressImage(file, 500, 0.5, function(compressedImg) {
-        if (compressedImg) {
-            pendingAlbumImages.push(compressedImg);
+    processHighQualityImage(file, function(hdImg) {
+        if (hdImg) {
+            pendingAlbumImages.push(hdImg);
             let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
             let album = albums.find(a => a.id === albumId);
             if (album) renderAlbumDetailModalContent(album);
@@ -235,7 +253,7 @@ function renderAlbumPhotosPreview(albumId) {
     container.innerHTML = html;
 }
 
-// 4. Lưu danh sách ảnh vào Album & Đẩy Cloud ngay lập tức
+// 4. Lưu ảnh Full HD vào Album & Đồng bộ Cloud ngay lập tức
 function uploadPhotosToAlbum(albumId) {
     if (pendingAlbumImages.length === 0) {
         alert("⚠️ Vui lòng chọn ít nhất 1 hình ảnh!");
@@ -249,8 +267,13 @@ function uploadPhotosToAlbum(albumId) {
     if (!album.photos) album.photos = [];
     album.photos.unshift(...pendingAlbumImages);
 
-    localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
-    alert(`📸 Đã tải thêm ${pendingAlbumImages.length} ảnh vào Album thành công!`);
+    try {
+        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    } catch (e) {
+        console.warn("LocalStorage đầy, tiếp tục đẩy lên Firebase.");
+    }
+
+    alert(`📸 Đã tải thêm ${pendingAlbumImages.length} ảnh nét vào Album thành công!`);
 
     pendingAlbumImages = [];
     viewAlbumPhotos(albumId);
@@ -263,8 +286,10 @@ function deleteAlbumToRecycle(albumId) {
     let albums = JSON.parse(localStorage.getItem('T132_MEMORIES')) || [];
     albums = albums.filter(a => a.id !== albumId);
     
-    localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    try {
+        localStorage.setItem('T132_MEMORIES', JSON.stringify(albums));
+    } catch (e) {}
+
     renderMemoriesTab();
     if (typeof pushLocalDataToCloud === 'function') pushLocalDataToCloud();
 }
-   
